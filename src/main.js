@@ -322,6 +322,8 @@ function loadLevel(id, daily = false) {
     say: (event, opts) => wren.say(event, opts),
     player,
     respawn: () => respawnPlayer(),
+    read: (title, text) => ui.showDoc(title, text),
+    torchOn: () => flashlight.intensity > 0,
     unlock: (key) => account.unlock(key),
     cubeSkin: progress.data.equipped.cube,
     hasNote: (w) => progress.hasNote(w),
@@ -352,6 +354,7 @@ function loadLevel(id, daily = false) {
   player.spawn(level.spawn.pos, level.spawn.yaw);
   player.applyCamera();
   viewmodel.visible = flags.hasGun;
+  flashlight.color.set('#fff4dd');
   flashlight.intensity = level.flashlight ? 60 : 0;
 
   game = {
@@ -693,7 +696,11 @@ window.addEventListener('blur', () => {
 });
 
 function toggleFlashlight() {
-  if (game.level.flashlight) flashlight.intensity = flashlight.intensity > 0 ? 0 : 60;
+  if (!game.level.flashlight && !game.flags.uv) return;
+  // The escape rooms' UV torch is purple; blackout levels get a white torch.
+  flashlight.color.set(game.level.flashlight ? '#fff4dd' : '#b26bff');
+  flashlight.intensity = flashlight.intensity > 0 ? 0 : game.level.flashlight ? 60 : 40;
+  sfx.play('ui');
 }
 
 // Keys the simulation sees this frame: keyboard + controller + toggled sprint.
@@ -1316,7 +1323,8 @@ window.__game = {
   get game() { return game; },
   player, keys, grabber, ui, account, settings,
   interact, fire: (color) => fire(game[color]), update, play, loadLevel, music, progress,
-  enterPhoto, exitPhoto, get photo() { return photo; },
+  enterPhoto, exitPhoto, get photo() { return photo; }, toggleFlashlight, flashlight,
+  rayHits: () => { raycaster.set(eye, dir); raycaster.far = 4; return raycaster.intersectObjects(game.b.solids, false).slice(0, 4).map((h) => ({ d: +h.distance.toFixed(2), geo: h.object.geometry?.type, params: h.object.geometry?.parameters, shown: isShown(h.object), interact: h.object.userData.interact ?? null, label: h.object.userData.label ?? h.object.parent?.userData?.label ?? null, pos: h.object.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(2)) })); },
   typeCode: (code) => { for (const d of code) if (aim?.kind === 'keypad') keypadInput(aim.obj.userData.keypad, d); },
   get aim() { return aim; },
   wren,

@@ -5,10 +5,11 @@ import * as THREE from 'three';
 import { Cell, T } from './cell.js';
 import { MODULE_IMPL as BASE } from './modules.js';
 import { MODULE_IMPL_2 } from './modules2.js';
+import { ESCAPE_ROOM } from './modules3.js';
 import { decorate, centerpiece } from './decor.js';
 import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, CONNECTORS, STARTS, EXITS } from './spaces.js';
 
-const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2 };
+const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM };
 import { signTexture } from '../../textures.js';
 import { makeRng, range, pick } from '../../random.js';
 
@@ -47,7 +48,7 @@ export function buildGenerated(plan, b, ctx) {
       exitY: dims.exitY ?? 0, floorGaps, dark: !!dims.dark, ceiling: dims.ceiling,
       variant: theme.variant?.(slot), connector: range(rng, 3, 6),
     });
-    dressRoom(b, cell, roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling));
+    dressRoom(b, cell, roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling, id === 'escape_room'));
     const inst = impl.build(cell, b, ctx, rng, { slot, remoteX: 2000 + slot * 400, diff: plan.diff ?? 0, twists: plan.twists ?? [] }, dims);
     decorate(b, cell, rng, inst.reserve);
     centerpiece(b, cell, rng);

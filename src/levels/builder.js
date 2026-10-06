@@ -408,7 +408,8 @@ export class LevelBuilder {
   }
 
   // Wall-mounted code keypad. `rotY` is the direction it faces.
-  keypad({ x, y, z, rotY, code, onSolve, enabled = () => true }) {
+  keypad({ x, y, z, rotY, code, onSolve, enabled = () => true, style = 'wall', parent = this.scene }) {
+    if (style === 'padlock') return this._padlock({ x, y, z, rotY, code, onSolve, parent });
     const group = new THREE.Group();
     group.position.set(x, y, z);
     group.rotation.y = rotY;
@@ -445,6 +446,55 @@ export class LevelBuilder {
       },
     };
     for (const m of [base, screenMesh, keysMesh]) {
+      m.userData.interact = 'keypad';
+      m.userData.keypad = kp;
+      this.solids.push(m);
+    }
+    kp.idle();
+    this.updaters.push((dt) => {
+      if (kp.flash > 0) {
+        kp.flash -= dt;
+        if (kp.flash <= 0) kp.idle();
+      }
+    });
+    return kp;
+  }
+
+  // A brass combination padlock (same input as a keypad: look at it, type digits).
+  _padlock({ x, y, z, rotY, code, onSolve, parent }) {
+    const group = new THREE.Group();
+    group.position.set(x, y, z);
+    group.rotation.y = rotY;
+    parent.add(group);
+    const brass = new THREE.MeshStandardMaterial({ color: '#c9a043', metalness: 0.85, roughness: 0.35 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.07), brass);
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.016, 8, 20, Math.PI), this.mat.metal);
+    shackle.position.y = 0.1;
+    const screen = dynamicTexture(256, 96);
+    const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.064), new THREE.MeshBasicMaterial({ map: screen.tex, toneMapped: false }));
+    screenMesh.position.set(0, -0.01, 0.037);
+    // Generous invisible hitbox: padlocks are small.
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.4, 0.2), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+    group.add(body, shackle, screenMesh, hit);
+    const kp = {
+      code, entered: '', solved: false, flash: 0, enabled: () => true, onSolve, padlock: true, group,
+      draw(text, color = '#ffd27a') {
+        const { g, w, h, tex } = screen;
+        g.fillStyle = '#1a1206';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = color;
+        g.font = 'bold 62px ui-monospace, Consolas, monospace';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(text, w / 2, h / 2 + 4);
+        tex.needsUpdate = true;
+      },
+      idle() {
+        if (kp.solved) { kp.draw('OPEN', '#5dff9a'); shackle.position.y = 0.16; }
+        else kp.draw((kp.entered + '____').slice(0, kp.code.length).split('').join(' '));
+      },
+    };
+    for (const m of [body, screenMesh, hit]) {
       m.userData.interact = 'keypad';
       m.userData.keypad = kp;
       this.solids.push(m);

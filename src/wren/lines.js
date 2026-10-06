@@ -87,6 +87,7 @@ export const LINES = {
     "Daily room! Same puzzle for everyone today. No pressure, but literally everyone is watching. No they aren't. Maybe.",
   ],
   module_intro: {
+    escape_room: "New wing! The curator's private rooms. He locked EVERYTHING. Drawers, cabinets, safes. Search it all, read every note. The door code is in pieces around the room.",
     grow_plate: "That plate wants something heavy. Things are as big as they look, remember? So look at them from very far away.",
     step_ledge: "A ledge. You can't jump that high. But a cube can be any size you can see it as.",
     color_count: "Count the lights. I know. Counting. In a museum of impossible architecture. Sometimes the trick is that there's no trick.",

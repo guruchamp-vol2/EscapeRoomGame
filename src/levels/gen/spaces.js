@@ -426,7 +426,11 @@ export function buildExit(b, y0, zEnd, rng, kind) {
 export const RIGS = ['panels', 'sconces', 'skylight', 'neon', 'spots', 'lanterns'];
 const TEMPS = { warm: '#ffd7a8', neutral: '#fff4e6', cool: '#d8e8ff' };
 
-export function roomStyle(rng, hasCeiling) {
+export function roomStyle(rng, hasCeiling, cozy = false) {
+  // Escape rooms: warm, dim, lived-in light.
+  if (cozy) {
+    return { cozy: true, rig: pick(rng, ['sconces', 'lanterns', 'sconces']), temp: 'warm', ceiling: pick(rng, ['beams', 'coffers', 'flat']), floor: 'plain' };
+  }
   return {
     rig: hasCeiling ? pick(rng, RIGS) : pick(rng, ['panels', 'lanterns', 'spots']),
     temp: pick(rng, ['warm', 'neutral', 'cool', 'accent']),
@@ -444,6 +448,10 @@ export function dressRoom(b, cell, style) {
   const tint = style.temp === 'accent' ? new THREE.Color(accent).lerp(new THREE.Color('#ffffff'), 0.55) : new THREE.Color(TEMPS[style.temp]);
   for (const l of cell.lamps) l.color.copy(tint);
   if (cell.key) cell.key.color.lerp(tint, 0.5);
+  if (style.cozy) {
+    for (const l of cell.lamps) l.intensity *= 0.55;
+    if (cell.key) cell.key.intensity *= 0.45;
+  }
   const fx = { collide: false, tile: 0, castShadow: false };
   const top = y0 + h;
 

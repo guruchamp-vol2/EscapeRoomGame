@@ -55,6 +55,8 @@ export const MODULES = {
   math_code: { name: 'Riddle', min: worldStart(13), weight: 2, rating: 3.5, secs: 4, isNew: true },
   collapsing_floor: { name: 'Crumbling Floor', min: worldStart(14), weight: 3, rating: 4, secs: 3, isNew: true },
   teleport_maze: { name: 'Teleporters', min: worldStart(15), weight: 3, rating: 4, secs: 4, isNew: true },
+  // The finale of every level from 10 on: a furnished room you search, IRL-style.
+  escape_room: { name: 'Escape Room', min: 10, weight: 0, rating: 4, secs: 25, staple: true },
   sprint_door: { name: 'Sprint Door', min: worldStart(17), weight: 3, rating: 4.5, secs: 3, isNew: true },
 };
 
@@ -120,7 +122,7 @@ function finalize(plan) {
 // `minLoad`: the previous level's load (this one may not be lower).
 // `aim`: 0..1, how far up the range of possible loads this level should sit.
 // `recent`: modules used by the last few levels, avoided for variety.
-function makePlan({ id, number, seedText, count, available, world, used, boost, force, diff, minLoad = 0, aim = 0.5, recent = new Set() }) {
+function makePlan({ id, number, seedText, count, available, world, used, boost, force, diff, minLoad = 0, aim = 0.5, recent = new Set(), staples = [] }) {
   const rng = makeRng(seedText);
   const twists = Object.keys(TWISTS).filter((t) => number >= TWISTS[t].min &&
     (number === TWISTS[t].min || rng() < TWISTS[t].chance));
@@ -138,6 +140,7 @@ function makePlan({ id, number, seedText, count, available, world, used, boost, 
     if (force) modules.push(force);
     // Otherwise rooms get harder towards the end of the level too.
     else modules.sort((a, b) => MODULES[a].rating - MODULES[b].rating);
+    modules.push(...staples); // always last
     const sig = modules.join('+');
     if (used?.has(sig) || candidates.some((c) => c.sig === sig)) continue;
     const fresh = modules.filter((m) => !recent.has(m)).length;
@@ -179,7 +182,8 @@ export function generatedPlans() {
     const world = { ...WORLDS[worldIndex], index: worldIndex };
     if (!usedByWorld.has(worldIndex)) usedByWorld.set(worldIndex, new Set());
     const rng = makeRng(`count:${n}`);
-    const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n);
+    const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && !MODULES[m].staple);
+    const staples = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && MODULES[m].staple);
     const recent = new Set(history.slice(-2).flat());
     const intro = INTRODUCTIONS[worldIndex];
     const isIntroLevel = n === worldStart(worldIndex);
@@ -193,10 +197,11 @@ export function generatedPlans() {
       // Climbs through each world: from the easier third of what's possible to the harder end.
       aim: 0.3 + 0.55 * ((n - worldStart(worldIndex)) / (LEVELS_PER_WORLD - 1)),
       recent,
+      staples,
     });
     prevLoad = plan.load;
     history.push(plan.modules);
-    plan.introduces = isIntroLevel ? intro : null;
+    plan.introduces = isIntroLevel ? intro : n === MODULES.escape_room.min ? 'escape_room' : null;
     while (usedNames.has(plan.name)) plan.name = `${pick(nameRng, ADJ)} ${pick(nameRng, NOUN)}`;
     usedNames.add(plan.name);
     cached.push(plan);
@@ -210,7 +215,7 @@ export function dailyPlan(date) {
   const worldIndex = Math.floor(rng() * WORLDS.length);
   const world = { ...WORLDS[worldIndex], index: worldIndex };
   const plan = makePlan({
-    id: 'daily', number: 0, seedText: `daily:${date}`, count: 3, available: shuffle(rng, Object.keys(MODULES)),
+    id: 'daily', number: 0, seedText: `daily:${date}`, count: 3, available: shuffle(rng, Object.keys(MODULES).filter((m) => !MODULES[m].staple)), staples: ['escape_room'],
     world, used: null, diff: 0.5 + rng() * 0.3,
   });
   plan.name = `Daily · ${plan.name}`;

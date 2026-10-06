@@ -354,6 +354,17 @@ export class UI {
       : `<div class="entry missing">Note ${w + 1}: somewhere in ${esc(GROUPS[w + 1].name)}…</div>`)).join('');
   }
 
+  // A document found in a level (notes, letters, cards).
+  showDoc(title, text) {
+    const el = $('#note-pop');
+    el.querySelector('.note-head').textContent = title.toUpperCase();
+    el.querySelector('.note-body').textContent = text;
+    el.querySelector('.note-foot').textContent = '';
+    el.classList.add('show');
+    clearTimeout(this._noteTimer);
+    this._noteTimer = setTimeout(() => el.classList.remove('show'), 7000);
+  }
+
   showNote(w, text, fresh) {
     const el = $('#note-pop');
     el.querySelector('.note-head').textContent = `CURATOR'S NOTE ${w + 1} / ${NOTES.length}`;
@@ -627,6 +638,10 @@ export class UI {
     this._lastInventory = key;
     $('#inventory').innerHTML = items.map((id) => {
       // Coloured keycards arrive as "keycard:#hex:Label".
+      if (id.startsWith('item:')) {
+        const [, icon, ...label] = id.split(':');
+        return `<div class="item"><span class="item-icon">${icon}</span>${esc(label.join(':'))}</div>`;
+      }
       if (id.startsWith('keycard:')) {
         const [, hex, label] = id.split(':');
         return `<div class="item">${ICONS.keycard.replaceAll('#d63a3a', hex)}${esc(label)}</div>`;

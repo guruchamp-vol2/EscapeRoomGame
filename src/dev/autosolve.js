@@ -149,7 +149,34 @@ function pressButton(btn, y0) {
   fail('could not aim at a button');
 }
 
+// Escape rooms: replay the solving order the generator recorded.
+function escapeAction(a, y0) {
+  const at = [a.at.x, a.at.y, a.at.z];
+  if (a.t === 'exit') return typeCode(a.at, a.code, y0);
+  standLook(a.stand.x, y0, a.stand.z, at);
+  const aim = G().aim;
+  if (a.t === 'press') {
+    if (aim?.kind !== 'button') fail(`could not aim at: ${a.why} (aim: ${aim?.kind ?? 'nothing'} at ${aim?.distance?.toFixed(2)}) hits: ${JSON.stringify(G().rayHits())}`);
+    G().interact();
+    step(0.6);
+  } else if (a.t === 'code') {
+    if (aim?.kind !== 'keypad') fail(`could not aim at a padlock (aim: ${aim?.kind ?? 'nothing'} "${aim?.obj?.userData?.label ?? ''}") hits: ${JSON.stringify(G().rayHits())}`);
+    G().typeCode(a.code);
+    if (!aim.obj.userData.keypad.solved) fail('padlock rejected the code');
+    step(0.9);
+  } else if (a.t === 'look') {
+    step(0.2);
+  } else if (a.t === 'uv') {
+    if (G().flashlight.intensity === 0) G().toggleFlashlight();
+    step(0.6);
+    G().toggleFlashlight();
+  }
+}
+
 const SOLVERS = {
+  escape_room(c) {
+    for (const a of c.actions) escapeAction(a, c.y0);
+  },
   grow_plate(c) {
     growOntoPlate(c.cube, c.plates[0], c);
   },

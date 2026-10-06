@@ -25,7 +25,16 @@ Atrium, Moonlit Gallery, Crystal Cavern, Volcanic, Origami, Chrome Hall and
 Glitch. Each world has its own textures, palette, lighting, sky or ceiling,
 particles and decoration, and each level jitters them so no two look the same.
 
-A generated level chains 1–4 rooms, each holding one of **15 puzzle gimmicks**
+From level 10, every level ends in an **escape room**: a snug, furnished,
+themed room (study, lab, captain's cabin, vault, observatory, tomb) that you
+search like a real one. Drawers, cabinets, chests and wall safes open; some
+need a key found elsewhere, some a combination padlock whose code is on a
+note or counted from the books on a shelf. Clues are on notes, in UV ink that
+only shows under the UV torch, on a panel that lights up once you find the
+fuse, or in the time on a stopped clock. Each clue is one digit of the door
+code, and the chains get deeper (and the red herrings more numerous) as you go.
+
+Before that, a generated level chains 3–5 rooms, each holding one of **25 puzzle gimmicks**
 with randomized layouts: grow a cube onto a plate, climb a ledge, shrink a cube
 into a socket, portal past glass / up a ledge / over a chasm, rescue a cube from
 a glass case, hold two plates at once, read an anamorphic code, count coloured
@@ -57,7 +66,18 @@ Its lines live in `src/wren/lines.js`; it can be turned off in Settings.
   don't count on the regular ones.
 - **Ghost replays**: every submitted run records your path. Tick "Race the fastest
   ghost" on the chamber screen to race a translucent replay of the top run.
-- **Achievements**: 20, shown in your profile.
+- **Achievements**: 23, shown in your profile, plus lifetime stats (time played,
+  distance walked, jumps, portals, photos…).
+- **Plays anywhere**: keyboard + mouse (every key rebindable), any standard
+  gamepad (with menu navigation and rumble), and phones/tablets (floating
+  joystick, drag to look, on-screen buttons and a number pad for keypads).
+- **Adaptive soundtrack**, generated live: each world has its own key, scale and
+  tempo, and bass, arpeggios and drums join as you get closer to the exit.
+- **Photo mode** (P): freeze the action, fly the camera a few metres, zoom,
+  tilt, grid overlay, save a PNG.
+- **Accessibility**: colour-blind letter tags on colour puzzles, reduce motion,
+  interface and crosshair size, toggle sprint, subtitles for every line.
+- **Share** a result (copies a spoiler-free summary), credits roll, pause-menu tips.
 - **Speedrun splits** for each objective, compared against your best run.
 - **Polish**: bloom, vignette, real-time shadows, glowing trim, dust, per-chamber
   colour themes, head bob, sprint FOV kick, chamber title cards, synthesized
@@ -68,10 +88,16 @@ Requires **Node 20+**.
 
 ## Progression
 
-- **Difficulty only goes up.** Level 5 starts as a 3-room level using everything
-  the story taught; rooms per level grow to 5, and every puzzle tightens its
-  numbers with level (heavier plates, taller ledges, smaller sockets, wider
-  chasms, longer sequences, 4-digit codes, fewer guide lights…).
+- **Every level is harder than the one before, measurably.** Each puzzle type
+  has a difficulty rating; a level's load (the sum of its rooms) never drops,
+  and `diff`, which every puzzle reads to tighten its numbers (heavier plates,
+  taller ledges, smaller sockets, wider chasms, longer sequences, deeper
+  escape-room chains…), rises every single level. `npm run check:curve`
+  verifies all 500 levels.
+- **No two levels alike**: 5 kinds of start area, 5 kinds of passage between
+  rooms (stairs, open-air bridges, chicanes, galleries, halls), 4 exits,
+  per-room lighting rigs, ceilings and floors, and huge distant shapes seen
+  from bridges. Neighbouring levels share few puzzle types.
 - **Every world introduces something new**, all the way through: colour counts,
   sequences, launch pads, chasms, keycard doors, blackout rooms, laser fences,
   twin plates, memory sequences, observation windows, wind lifts, cube rescues,
@@ -85,6 +111,9 @@ Requires **Node 20+**.
 - **The Curator's Journal**: 20 hidden notes (level 13 of each world) tell the
   story of what happened to the curator.
 - **Rank titles** from Visitor to Legend as your star total grows.
+
+See [IMPROVEMENTS.md](IMPROVEMENTS.md) for the full list of what's done and
+what could come next.
 
 ## Put it online (free)
 
