@@ -225,7 +225,7 @@ export const STARTS = ['corridor', 'elevator', 'lobby', 'airlock', 'overlook'];
 export function buildStart(b, plan, rng, kind) {
   const m = b.mat, th = b.theme;
   const titleSign = (x, y, z, rotY) => {
-    const title = plan.number ? `LEVEL ${plan.number}` : 'DAILY';
+    const title = plan.boss ? `CHAPTER ${plan.boss.chapter} · LEVEL ${plan.number}` : plan.number ? `LEVEL ${plan.number}` : 'DAILY';
     b.sign(signTexture([{ text: title, size: 44, color: th.accent }, { text: plan.name.replace(/^Daily · /, ''), size: 60 }, { text: plan.worldName, size: 34, color: '#9aa4ae' }],
       { w: 640, h: 320, bg: '#0b0d10' }), 1.9, 0.95, x, y, z, rotY, { glow: 1.2 });
   };
@@ -426,13 +426,15 @@ export function buildExit(b, y0, zEnd, rng, kind) {
 export const RIGS = ['panels', 'sconces', 'skylight', 'neon', 'spots', 'lanterns'];
 const TEMPS = { warm: '#ffd7a8', neutral: '#fff4e6', cool: '#d8e8ff' };
 
-export function roomStyle(rng, hasCeiling, cozy = false) {
+export function roomStyle(rng, hasCeiling, cozy = false, { prefer = [], avoid = null } = {}) {
   // Escape rooms: warm, dim, lived-in light.
   if (cozy) {
     return { cozy: true, rig: pick(rng, ['sconces', 'lanterns', 'sconces']), temp: 'warm', ceiling: pick(rng, ['beams', 'coffers', 'flat']), floor: 'plain' };
   }
+  const allowed = (hasCeiling ? RIGS : ['panels', 'lanterns', 'spots']).filter((r) => r !== avoid);
+  const liked = prefer.filter((r) => allowed.includes(r));
   return {
-    rig: hasCeiling ? pick(rng, RIGS) : pick(rng, ['panels', 'lanterns', 'spots']),
+    rig: liked.length && rng() < 0.6 ? pick(rng, liked) : pick(rng, allowed),
     temp: pick(rng, ['warm', 'neutral', 'cool', 'accent']),
     ceiling: pick(rng, ['flat', 'beams', 'coffers', 'pipes', 'flat']),
     floor: pick(rng, ['plain', 'border', 'runner', 'plain', 'grid']),
@@ -590,4 +592,9 @@ export function buildVista(b, rng, { zMin, zMax }) {
     group.add(mesh);
   }
   if (spin.length) b.updaters.push((dt) => { for (const s of spin) s.rotation.y += dt * 0.05; });
+}
+
+// A banner over a room's entrance (inside), e.g. "FEATURED · LASER FENCE".
+export function roomBanner(b, cell, lines, color) {
+  b.sign(signTexture(lines, { w: 768, h: 160, bg: '#0b0d10', border: color }), 2.4, 0.5, 0, cell.y0 + 3.05, cell.zS - 0.03, Math.PI, { glow: 1.25 });
 }

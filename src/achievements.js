@@ -23,6 +23,9 @@ export const ACHIEVEMENTS = [
   { key: 'bunny_hop', icon: '🐇', name: 'Bunny Hop', desc: 'Jump 1,000 times.' },
   { key: 'marathon', icon: '⌛', name: 'Marathon', desc: 'Play for 3 hours in total.' },
   { key: 'globetrotter', icon: '🥾', name: 'Globetrotter', desc: 'Walk 10 km inside the museum.' },
+  { key: 'archivist', icon: '📜', name: 'Archivist', desc: 'Clear the first chapter boss, The Archive (level 50).' },
+  { key: 'chapter_turned', icon: '📖', name: 'Page Turner', desc: 'Clear a later chapter boss.' },
+  { key: 'the_door', icon: '🚪', name: 'The Door to Everywhere', desc: 'Clear the final chapter (level 500).' },
   { key: 'ghostbuster', icon: '👻', name: 'Ghostbuster', desc: 'Beat the ghost you were racing.' },
 ];
 

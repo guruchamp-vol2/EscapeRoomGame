@@ -34,6 +34,10 @@ Grouped by what it improves; the most important groups come first.
 - [ ] Play-tested par times from real players instead of estimates
 
 ## 3. Variety (no two levels alike)
+- [x] Puzzle families; neighbouring rooms never share one
+- [x] A featured mechanic every 7 levels; boss chapters every 50 with a story reveal
+- [x] Each world favours its own puzzle families, passages, arrivals and lighting
+- [x] Story pulse within a chapter (arrival → exploration → pressure)
 - [x] 20 visual worlds, per-level palette shifts and per-room pattern changes
 - [x] 5 start areas, 5 connector types, 4 exits
 - [x] Lighting rigs, ceilings and floor styles per room
@@ -64,7 +68,7 @@ Grouped by what it improves; the most important groups come first.
 - [x] Photo mode with free camera, zoom, tilt and grid
 - [x] Credits roll
 - [ ] Voice acting for WREN (text-to-speech option)
-- [ ] Cutscenes between worlds
+- [~] Story beats between chapters (WREN lines, journal reveals; no cutscenes yet)
 - [ ] Particle bursts when doors open and puzzles click
 - [ ] Footstep sounds that change with the floor material
 

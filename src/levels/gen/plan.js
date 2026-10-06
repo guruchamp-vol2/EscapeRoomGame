@@ -16,9 +16,23 @@
 //    different modules of equal rating. On top of that `diff` (0..1), which
 //    every module reads to tighten its parameters, rises every single level.
 //    score = load × (1 + 0.8 × diff) is therefore strictly increasing;
-//    `node scripts/check-curve.mjs` verifies it.
+//    `node scripts/check-curve.mjs` verifies it. Boss levels (every 50) are
+//    spikes above that line; the level after a boss continues the line.
+//
+// Rhythm and variety (see storyline.js):
+//  * Every module belongs to a FAMILY (scale, portal, cipher, pattern, space,
+//    motion, hazard, search). Neighbouring rooms never share a family, so a
+//    level never plays the same kind of room twice in a row.
+//  * Every 7 levels a FEATURED mechanic is forced in and its family boosted.
+//  * Every 50 levels a BOSS level: one more room, the chapter's mechanics, a
+//    pressure twist and a story reveal. Within a chapter the story pulse
+//    (arrival → exploration → pressure) raises twists and the target load.
+//  * Each world favours its own families (worlds.js `rhythm`).
+// Generation order: valid by gameplay (load, families) → interesting by
+// rhythm (featured, pulse) → thematic by chapter (boss, world rhythm).
 import { WORLDS, LEVELS_PER_WORLD } from './worlds.js';
 import { makeRng, pick, irange, shuffle } from '../../random.js';
+import { chapterFor, storyPulse, PULSE, isBossLevel, isFeatureLevel, FEATURE_FLAVOR, getNarrativeBeat } from './storyline.js';
 
 export const FIRST_GENERATED = 5; // levels 1–4 are hand-made
 export const GENERATED_COUNT = 500;
@@ -60,6 +74,19 @@ export const MODULES = {
   sprint_door: { name: 'Sprint Door', min: worldStart(17), weight: 3, rating: 4.5, secs: 3, isNew: true },
 };
 
+// Puzzle families: rooms next to each other never share one.
+export const FAMILY = {
+  grow_plate: 'scale', step_ledge: 'scale', shrink_socket: 'scale', stack_ledge: 'scale', two_plates: 'scale',
+  portal_glass: 'portal', portal_ledge: 'portal', portal_pit: 'portal', cube_rescue: 'portal',
+  anamorph_code: 'cipher', color_count: 'cipher', window_code: 'cipher', math_code: 'cipher',
+  button_sequence: 'pattern', memory_sequence: 'pattern',
+  loop_rooms: 'space', bigger_inside: 'space', teleport_maze: 'space',
+  bounce_pad: 'motion', fan_lift: 'motion', collapsing_floor: 'motion', sprint_door: 'motion',
+  laser_fence: 'hazard', dark_room: 'hazard',
+  keycard_doors: 'search', escape_room: 'search',
+};
+for (const [id, f] of Object.entries(FAMILY)) MODULES[id].family = f;
+
 // Twists change how a whole level plays rather than adding a room.
 export const TWISTS = {
   decoys: { name: 'Fake Panels', min: worldStart(16), chance: 0.6, rating: 1 },
@@ -99,71 +126,127 @@ export const levelLoad = (modules, twists = []) =>
 
 export const levelScore = (modules, diff, twists = []) => levelLoad(modules, twists) * (1 + 0.8 * diff);
 
-function weightedPick(rng, ids, avoid, boost) {
+function weightedPick(rng, ids, avoid, weightOf) {
   const pool = ids.filter((id) => !avoid.has(id));
   const list = pool.length ? pool : ids;
-  const w = (id) => MODULES[id].weight * (id === boost ? 3 : 1);
-  const total = list.reduce((s, id) => s + w(id), 0);
+  const total = list.reduce((t, id) => t + weightOf(id), 0);
   let r = rng() * total;
   for (const id of list) {
-    r -= w(id);
+    r -= weightOf(id);
     if (r <= 0) return id;
   }
   return list[list.length - 1];
 }
 
+// Orders a level's rooms: easiest first, the forced module (a new or featured
+// mechanic) as late as possible, staples last, and never two rooms of the same
+// family next to each other. Depth-first, trying rooms in rating order, so the
+// first valid order found is the one closest to "sorted". → array or null.
+function arrange(mods, force, staples) {
+  const sorted = [...mods].sort((a, b) => MODULES[a].rating - MODULES[b].rating);
+  const tail = staples[0] ?? null;
+  const search = (wantForceLast) => {
+    const out = [];
+    const used = new Set();
+    const dfs = () => {
+      if (out.length === sorted.length) {
+        if (wantForceLast && force && out[out.length - 1] !== force) return false;
+        return !tail || FAMILY[out[out.length - 1]] !== FAMILY[tail];
+      }
+      for (const m of sorted) {
+        if (used.has(m)) continue;
+        if (out.length && FAMILY[out[out.length - 1]] === FAMILY[m]) continue;
+        if (wantForceLast && force && m === force && out.length !== sorted.length - 1) continue;
+        used.add(m);
+        out.push(m);
+        if (dfs()) return true;
+        out.pop();
+        used.delete(m);
+      }
+      return false;
+    };
+    return dfs() ? [...out, ...staples] : null;
+  };
+  return search(true) ?? search(false);
+}
+
 // Fields derived from the module list (recomputed if the list changes).
 function finalize(plan) {
   plan.gun = plan.modules.some((m) => MODULES[m].gun);
-  plan.minMs = plan.modules.reduce((s, m) => s + MODULES[m].secs, 0) * 1000;
+  plan.minMs = plan.modules.reduce((sum, m) => sum + MODULES[m].secs, 0) * 1000;
   return plan;
 }
 
-// `minLoad`: the previous level's load (this one may not be lower).
+// `minLoad`: the load this level must reach.
 // `aim`: 0..1, how far up the range of possible loads this level should sit.
 // `recent`: modules used by the last few levels, avoided for variety.
-function makePlan({ id, number, seedText, count, available, world, used, boost, force, diff, minLoad = 0, aim = 0.5, recent = new Set(), staples = [] }) {
+// `weightOf`: pick weight per module (world rhythm, featured family, boss).
+// `twists`: fixed twists (boss pressure), or null to roll the normal ones.
+function makePlan({ id, number, seedText, count, available, world, used, force, diff, minLoad = 0, aim = 0.5,
+  recent = new Set(), staples = [], weightOf = (m) => MODULES[m].weight, twistChance = 1, twists = null }) {
   const rng = makeRng(seedText);
-  const twists = Object.keys(TWISTS).filter((t) => number >= TWISTS[t].min &&
-    (number === TWISTS[t].min || rng() < TWISTS[t].chance));
+  twists ??= Object.keys(TWISTS).filter((t) => number >= TWISTS[t].min &&
+    (number === TWISTS[t].min || rng() < Math.min(0.9, TWISTS[t].chance * twistChance)));
   const candidates = [];
-  for (let attempt = 0; attempt < 400; attempt++) {
-    const modules = [];
-    // Early attempts also avoid what the last levels used; later ones relax it.
-    const avoid = new Set([...(force ? [force] : []), ...(attempt < 200 ? recent : [])]);
-    for (let i = 0; i < count - (force ? 1 : 0); i++) {
-      const m = weightedPick(rng, available, avoid, boost);
-      modules.push(m);
-      avoid.add(m); // no repeats within a level
+  const generate = (attempts, { avoidRecent, weights, forced }) => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const picked = forced ? [forced] : [];
+      // Early attempts also avoid what the last levels used; later ones relax it.
+      const avoid = new Set([...picked, ...(avoidRecent && attempt < attempts / 2 ? recent : [])]);
+      while (picked.length < count) {
+        const m = weightedPick(rng, available, avoid, weights);
+        if (picked.includes(m)) break;
+        picked.push(m);
+        avoid.add(m); // no repeats within a level
+      }
+      if (picked.length < count) continue;
+      const modules = arrange(picked, forced, staples);
+      if (!modules) continue;
+      const sig = modules.join('+');
+      if (used?.has(sig) || candidates.some((c) => c.sig === sig)) continue;
+      const fresh = modules.filter((m) => !recent.has(m)).length;
+      // Distinct families in the level: more is better.
+      const families = new Set(modules.map((m) => FAMILY[m])).size;
+      candidates.push({ modules, sig, load: levelLoad(modules, twists), fresh, families, forced });
     }
-    // A newly introduced module goes last, as the level's finale.
-    if (force) modules.push(force);
-    // Otherwise rooms get harder towards the end of the level too.
-    else modules.sort((a, b) => MODULES[a].rating - MODULES[b].rating);
-    modules.push(...staples); // always last
-    const sig = modules.join('+');
-    if (used?.has(sig) || candidates.some((c) => c.sig === sig)) continue;
-    const fresh = modules.filter((m) => !recent.has(m)).length;
-    candidates.push({ modules, sig, load: levelLoad(modules, twists), fresh });
+  };
+  // Gameplay validity comes first: if nothing reaches the required load, search
+  // wider, then drop the variety preferences, and only then the forced module.
+  const uniform = (m) => MODULES[m].weight * (1 + MODULES[m].rating / 2);
+  const passes = [
+    [300, { avoidRecent: true, weights: weightOf, forced: force }],
+    [500, { avoidRecent: false, weights: weightOf, forced: force }],
+    [500, { avoidRecent: false, weights: uniform, forced: force }],
+    [500, { avoidRecent: false, weights: uniform, forced: null }],
+  ];
+  for (const [attempts, opts] of passes) {
+    generate(attempts, opts);
+    if (candidates.some((c) => c.load >= minLoad - 1e-9)) break;
   }
-  if (!candidates.length) candidates.push({ modules: [...available.slice(0, count)], sig: '', load: 0, fresh: 0 });
-  // The load to aim for: a percentile of what's possible, never below the last level.
+  if (!candidates.length) {
+    const modules = arrange(available.slice(0, count), null, staples) ?? [...available.slice(0, count), ...staples];
+    candidates.push({ modules, sig: '', load: levelLoad(modules, twists), fresh: 0, families: 0 });
+  }
+  // The load to aim for: a percentile of what's possible, never below minLoad.
   const loads = candidates.map((c) => c.load).sort((a, b) => a - b);
   const want = Math.max(minLoad, loads[Math.min(loads.length - 1, Math.floor(aim * loads.length))]);
   const ok = candidates.filter((c) => c.load >= want - 1e-9);
-  // Lowest load that clears the bar; among those, the most different from recent levels.
+  // Lowest load that clears the bar; among those, the most varied and the most
+  // different from recent levels.
   const pool0 = ok.length ? ok : [candidates.reduce((a, c) => (c.load > a.load ? c : a))];
   const lowest = Math.min(...pool0.map((c) => c.load));
   const tier = pool0.filter((c) => c.load === lowest);
-  const bestFresh = Math.max(...tier.map((c) => c.fresh));
-  const pool = tier.filter((c) => c.fresh === bestFresh);
+  const score = (c) => c.fresh * 2 + c.families;
+  const best = Math.max(...tier.map(score));
+  const pool = tier.filter((c) => score(c) === best);
   const chosen = pool[Math.floor(rng() * pool.length)];
   const modules = chosen.modules;
   used?.add(chosen.sig);
+  const droppedForce = force && !modules.includes(force);
   const name = `${pick(rng, ADJ)} ${pick(rng, NOUN)}`;
   return finalize({
     id, number, name, seed: seedText, modules, twists, diff, load: levelLoad(modules, twists), score: levelScore(modules, diff, twists),
-    world: world.index, worldName: world.name, tagline: world.tagline,
+    world: world.index, worldName: world.name, tagline: world.tagline, droppedForce,
   });
 }
 
@@ -175,33 +258,79 @@ export function generatedPlans() {
   const usedByWorld = new Map();
   const usedNames = new Set();
   const nameRng = makeRng('names');
-  let prevLoad = 0;
+  let chainLoad = 0; // load of the last non-boss level: the line bosses spike above
   const history = [];
+  const lastFeatured = new Map();
   for (let n = FIRST_GENERATED; n <= LAST_GENERATED; n++) {
     const worldIndex = Math.floor((n - FIRST_GENERATED) / LEVELS_PER_WORLD);
     const world = { ...WORLDS[worldIndex], index: worldIndex };
     if (!usedByWorld.has(worldIndex)) usedByWorld.set(worldIndex, new Set());
-    const rng = makeRng(`count:${n}`);
     const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && !MODULES[m].staple);
     const staples = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && MODULES[m].staple);
     const recent = new Set(history.slice(-2).flat());
     const intro = INTRODUCTIONS[worldIndex];
     const isIntroLevel = n === worldStart(worldIndex);
-    const plan = makePlan({
-      id: `p${n}`, number: n, seedText: `level:${n}`, count: moduleCount(n), available, world,
-      used: usedByWorld.get(worldIndex),
-      boost: MODULES[intro] ? intro : null,
-      force: isIntroLevel && MODULES[intro] ? intro : null,
+    const chapter = chapterFor(n);
+    const pulse = storyPulse(n);
+    const P = PULSE[pulse];
+    const boss = isBossLevel(n) ? chapter : null;
+
+    // Featured mechanic: the world's new one on its first level; otherwise every
+    // 7 levels, the unlocked mechanic that has gone longest without the spotlight.
+    // If a choice can't reach the level's required difficulty, the next-longest
+    // waiting one gets the spotlight instead.
+    let options = [null];
+    if (!boss && isIntroLevel && MODULES[intro]) options = [intro];
+    else if (!boss && isFeatureLevel(n)) {
+      options = [...available].sort((a, b) =>
+        ((lastFeatured.get(a) ?? -1e9) - (lastFeatured.get(b) ?? -1e9)) || (MODULES[b].min - MODULES[a].min)).slice(0, 6);
+    }
+
+    // Boss: the chapter's signature mechanic is forced, the rest of its list boosted.
+    const bossMods = boss ? boss.mechanics.filter((m) => available.includes(m)) : [];
+    const signature = bossMods.sort((a, b) => MODULES[b].rating - MODULES[a].rating)[0] ?? null;
+    const families = new Set(world.rhythm?.families ?? []);
+    const worldPos = (n - worldStart(worldIndex)) / (LEVELS_PER_WORLD - 1);
+    const used = usedByWorld.get(worldIndex);
+    let plan = null, featured = null;
+    for (const option of options) {
+      featured = option;
+      const weightOf = (m) => MODULES[m].weight
+      * (families.has(FAMILY[m]) ? 2 : 1)
+      * (featured && FAMILY[m] === FAMILY[featured] ? 3 : 1)
+      * (bossMods.includes(m) ? 4 : 1)
+      * (MODULES[intro] && m === intro ? 2 : 1);
+      plan = makePlan({
+      id: `p${n}`, number: n, seedText: `level:${n}`, count: moduleCount(n) + (boss ? 1 : 0), available, world,
+      used: new Set(used), // a trial: only the accepted plan's rooms are recorded
+      force: boss ? signature : featured,
       diff: difficulty(n),
-      minLoad: prevLoad,
-      // Climbs through each world: from the easier third of what's possible to the harder end.
-      aim: 0.3 + 0.55 * ((n - worldStart(worldIndex)) / (LEVELS_PER_WORLD - 1)),
+      // Bosses must stand clearly above the line; everything else continues it.
+      minLoad: boss ? chainLoad + 1 : chainLoad,
+      aim: Math.min(0.95, Math.max(0.05, 0.3 + 0.55 * worldPos + P.aimShift)),
       recent,
       staples,
-    });
-    prevLoad = plan.load;
+      weightOf,
+      twistChance: P.twistChance,
+      twists: boss ? boss.pressure.filter((t) => t !== 'decoys' || n >= 100) : null,
+      });
+      if (!plan.droppedForce) break;
+    }
+    used.add(plan.modules.join('+'));
+    if (featured && plan.modules.includes(featured)) lastFeatured.set(featured, n);
+    if (!boss) chainLoad = plan.load;
     history.push(plan.modules);
     plan.introduces = isIntroLevel ? intro : n === MODULES.escape_room.min ? 'escape_room' : null;
+    plan.featured = featured && plan.modules.includes(featured) ? featured : null;
+    plan.featuredFlavor = featured ? FEATURE_FLAVOR[featured] ?? null : null;
+    plan.chapter = { index: chapter.index, name: chapter.name, tone: chapter.tone };
+    plan.pulse = pulse;
+    plan.beat = getNarrativeBeat(n);
+    plan.boss = boss ? {
+      chapter: chapter.index, name: boss.name, intro: boss.intro, narrative: boss.narrative,
+      reward: boss.reward, pressureText: boss.pressureText ?? null,
+    } : null;
+    if (boss) plan.name = boss.name;
     while (usedNames.has(plan.name)) plan.name = `${pick(nameRng, ADJ)} ${pick(nameRng, NOUN)}`;
     usedNames.add(plan.name);
     cached.push(plan);
@@ -215,9 +344,14 @@ export function dailyPlan(date) {
   const worldIndex = Math.floor(rng() * WORLDS.length);
   const world = { ...WORLDS[worldIndex], index: worldIndex };
   const plan = makePlan({
-    id: 'daily', number: 0, seedText: `daily:${date}`, count: 3, available: shuffle(rng, Object.keys(MODULES).filter((m) => !MODULES[m].staple)), staples: ['escape_room'],
+    id: 'daily', number: 0, seedText: `daily:${date}`, count: 3,
+    available: shuffle(rng, Object.keys(MODULES).filter((m) => !MODULES[m].staple)), staples: ['escape_room'],
     world, used: null, diff: 0.5 + rng() * 0.3,
   });
   plan.name = `Daily · ${plan.name}`;
+  plan.chapter = null;
+  plan.pulse = 'exploration';
+  plan.featured = null;
+  plan.boss = null;
   return plan;
 }

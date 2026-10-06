@@ -24,7 +24,7 @@ const OVERRIDES = {
   3: { scale: 'phrygian', tempo: 84, pad: 'triangle', arp: 'triangle', bright: 1400 }, // Desert Ruins
 };
 
-export function moodFor(world, { blackout = false, story = false } = {}) {
+export function moodFor(world, { blackout = false, story = false, boss = false } = {}) {
   if (story) return { root: 50, scale: 'lydian', tempo: 76, pad: 'sine', arp: 'triangle', bright: 1600, prog: PROGRESSIONS[0], seed: 99 };
   const w = Math.max(0, world);
   const base = {
@@ -39,6 +39,8 @@ export function moodFor(world, { blackout = false, story = false } = {}) {
     ...OVERRIDES[w],
   };
   if (blackout) Object.assign(base, { scale: 'phrygian', bright: 700, tempo: base.tempo - 10 });
+  // Chapter bosses: minor, faster, a different progression.
+  if (boss) Object.assign(base, { scale: 'minor', tempo: base.tempo + 14, prog: [0, 5, 3, 4], seed: base.seed + 500 });
   return base;
 }
 

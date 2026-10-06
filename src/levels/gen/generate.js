@@ -7,7 +7,8 @@ import { MODULE_IMPL as BASE } from './modules.js';
 import { MODULE_IMPL_2 } from './modules2.js';
 import { ESCAPE_ROOM } from './modules3.js';
 import { decorate, centerpiece } from './decor.js';
-import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, CONNECTORS, STARTS, EXITS } from './spaces.js';
+import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, roomBanner, CONNECTORS, STARTS, EXITS } from './spaces.js';
+import { MODULES } from './plan.js';
 import { signTexture } from '../../textures.js';
 import { makeRng, range, pick } from '../../random.js';
 import { computeDifficultyParams } from './difficulty.js';
@@ -16,13 +17,15 @@ import { PayoffManager } from './payoffs.js';
 
 const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM };
 
-// Weighted connector choice; never the same kind twice in a row.
+// Weighted connector choice; never the same kind twice in a row. A world's
+// preferred passages (worlds.js rhythm) are three times as likely.
 const CONNECTOR_WEIGHTS = { hall: 3, stairs: 2, bridge: 2, chicane: 1.6, gallery: 1.6 };
-function pickConnector(rng, prev, canClimb) {
+function pickConnector(rng, prev, canClimb, prefer = []) {
   const kinds = CONNECTORS.filter((k) => k !== prev && (canClimb || k !== 'stairs'));
-  const total = kinds.reduce((t, k) => t + CONNECTOR_WEIGHTS[k], 0);
+  const w = (k) => CONNECTOR_WEIGHTS[k] * (prefer.includes(k) ? 3 : 1);
+  const total = kinds.reduce((t, k) => t + w(k), 0);
   let r = rng() * total;
-  for (const k of kinds) if ((r -= CONNECTOR_WEIGHTS[k]) <= 0) return k;
+  for (const k of kinds) if ((r -= w(k)) <= 0) return k;
   return kinds[0];
 }
 
@@ -50,8 +53,17 @@ export function buildGenerated(plan, b, ctx) {
   // Layout choices come from their own stream so they don't disturb the
   // puzzle modules' random numbers.
   const layout = makeRng(`layout:${plan.seed}`);
-  const startKind = pick(layout, STARTS);
+  const rhythm = theme.world?.rhythm ?? {};
+  // Bosses arrive through a grand lobby and leave through a portal ring; other
+  // levels usually arrive the way their world likes to.
+  const startKind = plan.boss ? 'lobby' : rhythm.starts && layout() < 0.7 ? pick(layout, rhythm.starts) : pick(layout, STARTS);
   buildStart(b, plan, layout, startKind);
+
+  // Story pulse: the museum's mood within the chapter.
+  if (plan.pulse === 'pressure' || plan.boss) {
+    if (b.scene.fog?.density) b.scene.fog.density *= 1.3;
+    b.hemi.intensity *= plan.boss ? 0.75 : 0.88;
+  }
 
   const cells = [];
   let z0 = -T, y0 = 0;
@@ -64,7 +76,14 @@ export function buildGenerated(plan, b, ctx) {
       exitY: dims.exitY ?? 0, floorGaps, dark: !!dims.dark, ceiling: dims.ceiling,
       variant: theme.variant?.(slot), connector: range(rng, 3, 6),
     });
-    dressRoom(b, cell, roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling, id === 'escape_room'));
+    const style = roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling, id === 'escape_room',
+      { prefer: rhythm.rigs ?? [], avoid: cells.at(-1)?.rig ?? null });
+    dressRoom(b, cell, style);
+    if (id === plan.featured) {
+      roomBanner(b, cell, [{ text: 'FEATURED', size: 40, color: theme.accent }, { text: (MODULES[id]?.name ?? id).toUpperCase(), size: 58 }], theme.accent);
+    } else if (plan.boss && slot === 0) {
+      roomBanner(b, cell, [{ text: `CHAPTER ${plan.boss.chapter}`, size: 40, color: '#ffcf6b' }, { text: plan.boss.name.toUpperCase(), size: 58 }], '#ffcf6b');
+    }
     const inst = impl.build(cell, b, ctx, rng, {
       slot,
       remoteX: 2000 + slot * 400,
@@ -73,12 +92,14 @@ export function buildGenerated(plan, b, ctx) {
       diffParams,
       levelState,
       twists: plan.twists ?? [],
+      // Boss levels hide the chapter's story in their escape room.
+      story: plan.boss && id === 'escape_room' ? { title: `Chapter ${plan.boss.chapter}: ${plan.boss.name}`, text: plan.boss.narrative } : null,
     }, dims);
     decorate(b, cell, rng, inst.reserve);
     centerpiece(b, cell, rng);
-    const kind = pickConnector(layout, cells.at(-1)?.connector, dims.exitY == null || dims.exitY === 0);
+    const kind = pickConnector(layout, cells.at(-1)?.connector, dims.exitY == null || dims.exitY === 0, rhythm.connectors ?? []);
     const next = buildConnector(b, cell, layout, kind);
-    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path });
+    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path, rig: style.rig });
     z0 = next.z;
     y0 = next.y;
   });
@@ -128,7 +149,7 @@ export function buildGenerated(plan, b, ctx) {
 
   // Final exit.
   const zEnd = z0 + T;
-  const exitKind = pick(layout, EXITS);
+  const exitKind = plan.boss ? 'portal' : pick(layout, EXITS);
   buildExit(b, y0, zEnd, layout, exitKind);
   buildVista(b, layout, { zMin: zEnd - 10, zMax: 8 });
 
@@ -198,542 +219,8 @@ export function buildGenerated(plan, b, ctx) {
         get done() { return entry.done; },
       }, Object.getOwnPropertyDescriptors(entry.inst.debug))),
       exitZ: zEnd - 5.5,
-      layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector) },
+      layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector), rigs: cells.map((c) => c.rig) },
       difficulty: { mode: difficultyMode, diff: plan.diff ?? 0, params: diffParams },
     },
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

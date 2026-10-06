@@ -1,4 +1,5 @@
 // Dramatic room-state transformations when a puzzle is solved.
+import * as THREE from 'three';
 
 export class PayoffManager {
   constructor(b, ctx, levelState) {
@@ -16,7 +17,11 @@ export class PayoffManager {
     const { roomIndex } = data;
     const callback = this.solveCallbacks.get(roomIndex);
     if (callback) callback(data);
-    this.b.ctx?.sfx?.play?.('unlock');
+    else if (data.cell) {
+      // Default payoff: sparks fly from the room's exit door as it opens.
+      const c = data.cell;
+      this.particleExplosion([0, c.y0 + c.exitY + 2.4, c.zN + 0.3], 46, 3.2, this.b.theme.accent);
+    }
   }
 
   async wallOpening(wall, direction = 'up', duration = 1.5) {
@@ -40,38 +45,40 @@ export class PayoffManager {
     });
   }
 
-  particleExplosion(pos, count = 30, speed = 3) {
-    const { scene, updaters, ctx } = this.b;
+  // A burst of sparks: one Points object, one updater, removed when done.
+  particleExplosion(pos, count = 40, speed = 3, color = '#ffcf6b') {
+    const { scene, updaters } = this.b;
+    const geo = new THREE.BufferGeometry();
+    const p = new Float32Array(count * 3), v = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const vel = [
-        Math.cos(angle) * speed,
-        Math.random() * speed,
-        Math.sin(angle) * speed,
-      ];
-      const particle = new THREE.Mesh(
-        new THREE.SphereGeometry(0.05, 4, 4),
-        new THREE.MeshBasicMaterial({ color: 0xffaa00 })
-      );
-      particle.position.set(pos[0], pos[1], pos[2]);
-      particle.userData.velocity = vel;
-      particle.userData.life = 1;
-      scene.add(particle);
-
-      const animate = (dt) => {
-        particle.userData.life -= dt * 0.5;
-        particle.position.x += vel[0] * dt;
-        particle.position.y += vel[1] * dt - 9.8 * dt * dt;
-        particle.position.z += vel[2] * dt;
-        particle.material.opacity = particle.userData.life;
-        if (particle.userData.life <= 0) {
-          scene.remove(particle);
-          updaters.splice(updaters.indexOf(animate), 1);
-        }
-      };
-      updaters.push(animate);
+      p.set(pos, i * 3);
+      const a = Math.random() * Math.PI * 2, up = Math.random();
+      v.set([Math.cos(a) * speed * (0.4 + Math.random() * 0.6), up * speed * 1.2, Math.sin(a) * speed * (0.4 + Math.random() * 0.6)], i * 3);
     }
-    ctx?.sfx?.play?.('unlock');
+    geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    const mat = new THREE.PointsMaterial({ color: new THREE.Color(color).multiplyScalar(2), size: 0.09, transparent: true, depthWrite: false });
+    const points = new THREE.Points(geo, mat);
+    scene.add(points);
+    let life = 1.3;
+    const animate = (dt) => {
+      life -= dt;
+      for (let i = 0; i < count; i++) {
+        v[i * 3 + 1] -= 9.8 * dt;
+        p[i * 3] += v[i * 3] * dt;
+        p[i * 3 + 1] += v[i * 3 + 1] * dt;
+        p[i * 3 + 2] += v[i * 3 + 2] * dt;
+      }
+      geo.attributes.position.needsUpdate = true;
+      mat.opacity = Math.max(0, life / 1.3);
+      if (life <= 0) {
+        scene.remove(points);
+        geo.dispose();
+        mat.dispose();
+        const k = updaters.indexOf(animate);
+        if (k >= 0) updaters.splice(k, 1);
+      }
+    };
+    updaters.push(animate);
   }
 
   startSafezoneDecay(startSize = 1.0, duration = 5) {

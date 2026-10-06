@@ -322,7 +322,9 @@ function loadLevel(id, daily = false) {
     say: (event, opts) => wren.say(event, opts),
     player,
     respawn: () => respawnPlayer(),
+    onStory: () => progress.readChapter(def.plan?.boss?.chapter),
     read: (title, text) => ui.showDoc(title, text),
+    isTouch: touch.enabled,
     torchOn: () => flashlight.intensity > 0,
     unlock: (key) => account.unlock(key),
     cubeSkin: progress.data.equipped.cube,
@@ -339,7 +341,8 @@ function loadLevel(id, daily = false) {
   const level = buildLevel(def, b, ctx);
   flags.hasGun = level.hasGun;
   post.setBloom(theme.bloom ?? 0.5);
-  music.setMood(moodFor(def.world, { story: def.story, blackout: def.plan?.twists?.includes('blackout') }));
+  music.setMood(moodFor(def.world, { story: def.story, blackout: def.plan?.twists?.includes('blackout'), boss: !!def.plan?.boss }));
+  if (def.plan?.boss) renderer.toneMappingExposure *= 0.9;
   music.setIntensity(0);
   renderer.toneMappingExposure = theme.exposure ?? 1.05;
 
@@ -390,7 +393,14 @@ function loadLevel(id, daily = false) {
 
 function play(id, daily = false) {
   if (photo) exitPhoto();
-  loadLevel(id, daily);
+  try {
+    loadLevel(id, daily);
+  } catch (err) {
+    console.error(`Level ${id} failed to load`, err);
+    ui.toast(`That level failed to load (${err.message}). Try another one, and please report it.`, { type: 'warn', ms: 8000 });
+    sfx.play('error');
+    return;
+  }
   ui.fadeIn();
   // Restarting mid-run keeps the lock, so no lock event will start the level.
   if (locked) {
@@ -404,7 +414,7 @@ function play(id, daily = false) {
 function startGame() {
   if (game.started) return;
   game.started = true;
-  music.setIntensity(1);
+  music.setIntensity(game.def.plan?.boss || game.def.plan?.pulse === 'pressure' ? 2 : 1);
   account.startRun(game.id, game.daily);
   ui.chapter(game.def, game.daily);
   const g = game;
@@ -538,7 +548,7 @@ function updateAim() {
   let [key, text, lockedPrompt] = promptFor(aim);
   if (key === 'E') key = K('interact');
   ui.setPrompt(key, text, lockedPrompt);
-  touch.setState({ gun: game.flags.hasGun, flashlight: game.level.flashlight, keypad: aim?.kind === 'keypad' && !aim.obj.userData.keypad.solved });
+  touch.setState({ gun: game.flags.hasGun, flashlight: game.level.flashlight || game.flags.uv, keypad: aim?.kind === 'keypad' && !aim.obj.userData.keypad.solved });
   ui.setCrosshair({
     hasGun: game.flags.hasGun, blue: game.blue.placed, orange: game.orange.placed, usable: !!key && !lockedPrompt,
   });
@@ -962,14 +972,31 @@ function introLine(g) {
   const def = g.def;
   if (g.daily) return wren.say('daily', { priority: 2 });
   if (def.story) return wren.say(`story_${def.id}`, { priority: 2 });
+  const plan = def.plan;
+  // Chapter bosses: the chapter's introduction, then what's different here.
+  if (plan.boss) {
+    wren.sayText(plan.boss.intro, 'thoughtful', 3);
+    if (plan.boss.pressureText) wren.sayText(plan.boss.pressureText, 'worried', 2);
+    return;
+  }
+  if (plan.beat) wren.sayText(plan.beat.line, plan.beat.mood ?? 'thoughtful', 2);
   // A new world gets its welcome, then the mechanic it introduces.
   if ((def.number - 5) % 25 === 0) wren.say('world', { index: def.world, priority: 2, cooldown: 0 });
   if (def.plan.introduces) return wren.say('module_intro', { key: def.plan.introduces, priority: 1, cooldown: 0 });
   if ((def.number - 5) % 25 === 0) return;
+  // Every 7 levels a mechanic takes the spotlight.
+  if (plan.featuredFlavor) return wren.sayText(plan.featuredFlavor, 'happy', 1);
+  if (plan.beat) return;
   wren.say('level_start', { vars: { level: def.number }, chance: 0.35, cooldown: 30 });
 }
 
 function outroLine(g, { levels, hints, timeMs }) {
+  const boss = g.def.plan?.boss;
+  if (boss && !g.daily) {
+    progress.reachChapter(boss.chapter);
+    account.unlock(boss.chapter === 10 ? 'the_door' : boss.chapter === 1 ? 'archivist' : 'chapter_turned');
+    return wren.sayText(boss.reward, 'thoughtful', 3);
+  }
   if (!g.daily) {
     const first = !levels[g.id];
     const count = LEVELS.filter((l) => levels[l.id]).length + (first ? 1 : 0);

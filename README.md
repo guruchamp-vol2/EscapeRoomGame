@@ -46,6 +46,31 @@ one gimmick to four; each gimmick is introduced in its own level first.
 Levels unlock in order. Generation is deterministic (seeded per level), so
 everyone gets the same level 137, and per-level leaderboards are fair.
 
+## Story and rhythm
+
+The levels aren't just shuffled; they follow a rhythm at three scales
+([storyline.js](src/levels/gen/storyline.js), [plan.js](src/levels/gen/plan.js)):
+
+- **Every room**: puzzle modules belong to families (scale, portal, cipher,
+  pattern, space, motion, hazard, search) and neighbouring rooms never share
+  one, so a level never plays the same kind of room twice in a row.
+- **Every 7 levels** a mechanic is *featured*: forced into the level with a
+  banner over its room and a WREN line, its family boosted. Brand-new
+  mechanics still arrive once per world (every 25 levels), all the way to 480.
+- **Every 50 levels** a chapter turns, ending in a **boss level**: an extra
+  room, the chapter's signature mechanics, a pressure twist (fake panels, a
+  blackout), a grand lobby, a portal exit, its own music, and a story reveal
+  in the curator's journal on the escape-room table. Within a chapter the
+  *story pulse* (arrival → exploration → pressure) shapes twists, light and music.
+- **Every world** has a section identity: the puzzle families, passages,
+  arrival areas and lighting it favours.
+
+The ten chapters (The Archive, The Laboratory, The Vault, The Echoes, The
+Recorded End, The Blueprint, The Mirror Wing, The Engine, The Curator's Room,
+The Door to Everywhere) tell the curator mystery: why the museum exists, why
+its rooms are becoming self-aware, and what the curator became. Chapters you
+reach are kept in the Journal next to the 20 Curator's Notes.
+
 ## WREN
 
 The museum's caretaker: a small floating drone with one big eye that follows

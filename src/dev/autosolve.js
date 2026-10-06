@@ -298,13 +298,25 @@ function climbFromSouth(c, x, z, sec = 3) {
 
 function growStep(c, cube, minSize, maxSize) {
   const { front } = c.ledge;
-  pickUp(cube, c.y0);
   const ok = (k) => {
     const p = k.mesh.position;
     return k.size > minSize && k.size < maxSize && p.z - k.size / 2 < front + 0.6 && p.y - k.size / 2 < c.y0 + 0.5 && Math.abs(p.x) < c.x1 - 1;
   };
-  const stands = [9, 7, 5, 11, 13].map((back) => ({ x: 0, y: c.y0, z: Math.min(c.zS - 0.8, front + back) }));
-  return placeHeldAt({ x: 0, z: front }, ok, stands);
+  const stands = [9, 7, 5, 11, 13, 4, 15].map((back) => ({ x: 0, y: c.y0, z: Math.min(c.zS - 0.8, front + back) }));
+  // Like a player re-grabbing: try a few grab distances (closer = bigger cube).
+  let last = null;
+  for (const dist of [1.4, 1.1, 0.9, 1.8]) {
+    try {
+      pickUp(cube, c.y0, dist);
+      return placeHeldAt({ x: 0, z: front }, ok, stands);
+    } catch (err) {
+      last = err;
+      drop();
+      cube.resetHome(); // like pressing R before trying again
+      step(0.5);
+    }
+  }
+  throw last;
 }
 
 Object.assign(SOLVERS, {

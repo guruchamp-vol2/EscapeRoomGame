@@ -3,6 +3,7 @@ import { ACHIEVEMENTS } from './achievements.js';
 import { LEVELS, GROUPS } from './levels/meta.js';
 import { SHOP, NOTES, levelUnlocked, continueId } from './progress.js';
 import { ACTIONS, keyLabel } from './controls.js';
+import { CHAPTERS } from './levels/gen/storyline.js';
 
 const TIPS = [
   'Hold the restart key (Q by default) to restart a level instantly.',
@@ -309,7 +310,7 @@ export class UI {
     }
 
     const next = LEVELS.find((l) => l.id === (progress ? continueId(progress) : account.nextLevel));
-    const anyDone = Object.keys(account.levels).length > 0;
+    const anyDone = Object.keys(account.levels).length > 0 || Object.keys(progress?.data.stars ?? {}).length > 0;
     $('#continue-btn').textContent = anyDone ? `Continue · ${next.name}` : 'Play';
 
     const daily = account.dailyBestMs;
@@ -348,6 +349,15 @@ export class UI {
 
   renderJournal(progress) {
     const found = progress.data.notes;
+    const beaten = progress.data.chapters ?? [];
+    const read = progress.data.chaptersRead ?? [];
+    $('#journal-chapters').innerHTML = CHAPTERS.slice(1).map((c, i) => {
+      const n = i + 1;
+      if (beaten.includes(n) || read.includes(n)) {
+        return `<div class="entry chapter"><b>CHAPTER ${n} · ${esc(c.name.toUpperCase())}</b>${esc(c.narrative)}<i>${esc(c.reward)}</i></div>`;
+      }
+      return `<div class="entry missing">Chapter ${n}: ${esc(c.name)}. Reach level ${c.boss} to uncover it.</div>`;
+    }).join('');
     $('#journal-count').textContent = `${found.length} of ${NOTES.length} notes found. One is hidden in level 13 of each world.`;
     $('#journal').innerHTML = NOTES.map((text, w) => (found.includes(w)
       ? `<div class="entry"><b>NOTE ${w + 1} · ${esc(GROUPS[w + 1].name)}</b>${esc(text)}</div>`
@@ -402,9 +412,11 @@ export class UI {
           <span class="best">${best != null ? `Best ${formatMs(best)}` : ''}</span></button>`;
       }
       const gimmicks = l.plan.modules.length;
-      return `<button class="tile ${best != null ? 'done' : ''}" data-level="${l.id}" ${locked ? 'disabled' : ''}
-          title="${esc(l.name)} · ${gimmicks} puzzle${gimmicks > 1 ? 's' : ''}">
-        <span class="num">${l.number}</span><span class="name">${esc(l.name)}</span>
+      const boss = l.plan.boss, feat = l.plan.featured;
+      const what = boss ? `Chapter ${boss.chapter} boss` : feat ? `Featured mechanic` : '';
+      return `<button class="tile ${best != null ? 'done' : ''} ${boss ? 'boss' : ''} ${feat ? 'featured' : ''}" data-level="${l.id}" ${locked ? 'disabled' : ''}
+          title="${esc(l.name)} · ${gimmicks} rooms${what ? ` · ${what}` : ''}">
+        <span class="num">${boss ? '♛ ' : feat ? '✦ ' : ''}${l.number}</span><span class="name">${esc(l.name)}</span>
         <span class="stars">${starsHtml(this._progress?.data.stars[l.id] ?? 0, 10)}</span>
         <span class="best">${best != null ? formatMs(best) : locked ? '🔒' : ''}</span></button>`;
     }).join('');
@@ -533,9 +545,11 @@ export class UI {
   // ---------- chapter card ----------
   chapter(level, daily) {
     const el = $('#chapter');
-    $('#chapter-num').textContent = daily ? 'DAILY CHALLENGE' : level.story ? `CHAMBER ${pad(level.number)}` : `LEVEL ${level.number} · ${worldName(level)}`;
+    const boss = level.plan?.boss;
+    $('#chapter-num').textContent = daily ? 'DAILY CHALLENGE' : level.story ? `CHAMBER ${pad(level.number)}` : boss ? `CHAPTER ${boss.chapter} · LEVEL ${level.number}` : `LEVEL ${level.number} · ${worldName(level)}`;
     $('#chapter-name').textContent = level.name;
-    $('#chapter-tag').textContent = level.tagline;
+    $('#chapter-tag').textContent = boss ? boss.intro : level.plan?.featured ? `Featured: ${level.plan.featuredFlavor ?? ''}` : level.tagline;
+    el.classList.toggle('boss', !!boss);
     el.classList.add('show');
     clearTimeout(this._chapterTimer);
     this._chapterTimer = setTimeout(() => el.classList.remove('show'), 3200);

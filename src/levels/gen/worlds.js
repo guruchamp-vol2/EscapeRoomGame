@@ -126,4 +126,34 @@ export const WORLDS = [
   },
 ];
 
+// Section identity: how each world *plays* and is *built*, not just its colours.
+//   families    puzzle families it favours (see FAMILY in plan.js)
+//   connectors  the passages between rooms it prefers
+//   starts      arrival areas it prefers
+//   rigs        room lighting it prefers
+//   mood        one line on the architecture's intent
+const RHYTHM = [
+  { families: ['scale', 'cipher'], connectors: ['hall', 'gallery'], starts: ['corridor', 'airlock'], rigs: ['panels', 'skylight'], mood: 'Orderly. One idea per room.' },
+  { families: ['scale', 'hazard'], connectors: ['stairs', 'chicane'], starts: ['airlock', 'corridor'], rigs: ['spots', 'panels'], mood: 'Heavy and vertical. Everything is a climb.' },
+  { families: ['pattern', 'motion'], connectors: ['chicane', 'bridge'], starts: ['lobby', 'elevator'], rigs: ['neon'], mood: 'Fast and flashy. Rooms want to be played.' },
+  { families: ['space', 'cipher'], connectors: ['stairs', 'bridge'], starts: ['overlook'], rigs: ['lanterns', 'spots'], mood: 'Ruins that fold back on themselves.' },
+  { families: ['portal', 'search'], connectors: ['hall', 'chicane'], starts: ['airlock', 'elevator'], rigs: ['panels', 'spots'], mood: 'Sealed modules and locked lockers.' },
+  { families: ['scale', 'motion'], connectors: ['gallery', 'bridge'], starts: ['lobby', 'overlook'], rigs: ['skylight', 'lanterns'], mood: 'Growing things, open air.' },
+  { families: ['cipher', 'hazard'], connectors: ['gallery', 'stairs'], starts: ['lobby'], rigs: ['sconces', 'lanterns'], mood: 'Quiet rooms full of things to read.' },
+  { families: ['space', 'portal'], connectors: ['bridge'], starts: ['overlook'], rigs: ['spots', 'neon'], mood: 'Islands of floor in nothing at all.' },
+  { families: ['motion', 'pattern'], connectors: ['chicane', 'gallery'], starts: ['lobby'], rigs: ['lanterns', 'neon'], mood: 'Bouncy, sticky, built so you stay.' },
+  { families: ['scale', 'hazard'], connectors: ['stairs', 'bridge'], starts: ['elevator', 'airlock'], rigs: ['spots'], mood: 'Catwalks over furnaces.' },
+  { families: ['pattern', 'search'], connectors: ['hall', 'stairs'], starts: ['airlock'], rigs: ['spots', 'neon'], mood: 'Deep, pressurised, watching.' },
+  { families: ['cipher', 'scale'], connectors: ['gallery'], starts: ['lobby', 'elevator'], rigs: ['sconces', 'lanterns'], mood: 'Grand halls and gilded riddles.' },
+  { families: ['cipher', 'space'], connectors: ['chicane', 'hall'], starts: ['elevator'], rigs: ['neon'], mood: 'Compiled corridors, logic gates.' },
+  { families: ['motion', 'portal'], connectors: ['bridge', 'gallery'], starts: ['overlook'], rigs: ['lanterns'], mood: 'Wide, warm and airborne.' },
+  { families: ['pattern', 'hazard'], connectors: ['gallery'], starts: ['lobby'], rigs: ['sconces', 'spots'], mood: 'A gallery at night. Something moves.' },
+  { families: ['space', 'motion'], connectors: ['stairs', 'chicane'], starts: ['overlook'], rigs: ['neon', 'lanterns'], mood: 'Caverns that ring when you move.' },
+  { families: ['motion', 'hazard'], connectors: ['bridge', 'stairs'], starts: ['overlook', 'airlock'], rigs: ['spots'], mood: 'Bridges over heat. Do not linger.' },
+  { families: ['scale', 'space'], connectors: ['chicane', 'gallery'], starts: ['corridor', 'lobby'], rigs: ['skylight', 'panels'], mood: 'Paper walls that fold into new rooms.' },
+  { families: ['portal', 'cipher'], connectors: ['hall', 'gallery'], starts: ['elevator'], rigs: ['panels', 'neon'], mood: 'Reflections that answer back.' },
+  { families: ['space', 'pattern'], connectors: ['chicane', 'bridge', 'stairs'], starts: ['corridor', 'airlock'], rigs: ['neon'], mood: 'Rules that change when you look away.' },
+];
+WORLDS.forEach((w, i) => { w.rhythm = RHYTHM[i]; });
+
 export const LEVELS_PER_WORLD = 25;
