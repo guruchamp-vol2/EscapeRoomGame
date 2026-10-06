@@ -1,0 +1,28 @@
+{
+  "name": "escaperoomgame",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A first-person escape room with portals, forced perspective and impossible geometry.",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.js --dev",
+    "build": "vite build",
+    "start": "node server/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guruchamp-vol2/EscapeRoomGame.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "nodemailer": "^10.0.15",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

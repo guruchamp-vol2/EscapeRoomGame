@@ -1,0 +1,25 @@
+# Render blueprint: New → Blueprint → pick this repo.
+# Accounts need a persistent database, because Render's free web services wipe
+# their disk on every restart. Create a free Turso database (turso.tech) and set
+# DATABASE_URL and DATABASE_AUTH_TOKEN when Render asks for them.
+services:
+  - type: web
+    name: perspective-lab
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/me
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SECURE_COOKIES
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_AUTH_TOKEN
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

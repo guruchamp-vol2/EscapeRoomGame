@@ -1,0 +1,435 @@
+// Dev tool: plays generated levels through the real game code to prove they're
+// solvable. Loaded only with ?debug. It takes shortcuts a player can't (placing
+// itself in a spot, reading the code from memory) but every mechanic is done
+// for real: cubes are grabbed and resized by forced perspective, portals are
+// fired and walked through, doors must open, plates must register.
+//
+//   await __solve('p137')          → { ok, reason, ... }
+//   await __solveAll(['p5', ...])  → summary
+const G = () => window.__game;
+const FRAME = 1 / 60;
+
+function step(sec) {
+  const n = Math.max(1, Math.round(sec / FRAME));
+  for (let i = 0; i < n; i++) G().update(FRAME);
+}
+
+function place(x, y, z, yaw = 0, pitch = 0) {
+  const p = G().player;
+  p.pos.set(x, y, z);
+  p.vel.set(0, 0, 0);
+  p.yaw = yaw;
+  p.pitch = pitch;
+  step(FRAME * 2);
+}
+
+function aimFrom(eye, target) {
+  const dx = target[0] - eye[0], dy = target[1] - eye[1], dz = target[2] - eye[2];
+  return { yaw: Math.atan2(-dx, -dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)) };
+}
+
+// Stand at (x, y, z) and look at `target`.
+function standLook(x, y, z, target) {
+  const a = aimFrom([x, y + 1.6, z], target);
+  place(x, y, z, a.yaw, a.pitch);
+}
+
+function hold(codes, sec) {
+  codes.forEach((k) => G().keys.add(k));
+  step(sec);
+  codes.forEach((k) => G().keys.delete(k));
+  step(0.1);
+}
+
+const held = () => G().grabber.held;
+const level = () => G().game.level;
+const fail = (reason) => { throw new Error(reason); };
+
+function pickUp(cube, y0, dist = 1.4) {
+  const p = cube.mesh.position;
+  for (const [dx, dz] of [[0, dist], [0, -dist], [dist, 0], [-dist, 0], [0, dist + 0.8]]) {
+    standLook(p.x + dx, y0, p.z + dz, [p.x, p.y, p.z]);
+    G().interact();
+    if (held() === cube) return;
+    if (held()) G().interact(); // grabbed something else; drop it
+  }
+  fail('could not pick up cube');
+}
+
+function drop() {
+  if (held()) G().interact();
+  step(1.5);
+}
+
+// Grow (or shrink) the held cube onto a spot by searching for a view angle
+// where forced perspective lands it there at an acceptable size.
+function placeHeldAt(target, accept, stands) {
+  for (const s of stands) {
+    const yawTo = Math.atan2(-(target.x - s.x), -(target.z - s.z));
+    for (let pitch = 0.25; pitch > -1.0; pitch -= 0.01) {
+      place(s.x, s.y, s.z, yawTo, pitch);
+      const c = held();
+      if (!c) fail('cube was dropped while aiming');
+      if (accept(c)) {
+        drop();
+        return c;
+      }
+    }
+  }
+  fail('no view angle placed the cube correctly');
+}
+
+function growOntoPlate(cube, plate, cell) {
+  if (held() !== cube) pickUp(cube, cell.y0);
+  const onPlate = (c) => {
+    const p = c.mesh.position;
+    return Math.abs(p.x - plate.x) < plate.half - 0.15 && Math.abs(p.z - plate.z) < plate.half - 0.15 &&
+      c.size >= plate.min + 0.08 && p.y - c.size / 2 < plate.y + 0.6;
+  };
+  const stands = [];
+  for (const back of [9, 7, 11, 5.5, 13]) {
+    const z = Math.min(cell.zS - 0.8, plate.z + back);
+    stands.push({ x: plate.x, y: cell.y0, z });
+  }
+  placeHeldAt(plate, onPlate, stands);
+  step(0.5);
+}
+
+function walkThroughPortal(panel, floorY) {
+  const nx = Math.sin(panel.rotY), nz = Math.cos(panel.rotY);
+  const p = panel.point;
+  place(p.x + nx * 1.6, floorY, p.z + nz * 1.6, Math.atan2(nx, nz), 0);
+  const before = G().game.teleports;
+  hold(['KeyW'], 1.2);
+  if (G().game.teleports === before) fail('walked into a portal but did not teleport');
+}
+
+function fireAt(color, panel, stands) {
+  const target = [panel.point.x, panel.point.y + 0.6, panel.point.z];
+  for (const s of stands) {
+    standLook(s.x, s.y, s.z, target);
+    G().fire(color);
+    if (G().game[color].panel === panel) return;
+  }
+  fail(`could not hit a panel with the ${color} portal`);
+}
+
+// Candidate places to stand in a cell, nearest the south end first.
+function standsIn(cell, zMin, zMax, y = cell.y0) {
+  const out = [];
+  for (let z = zMax; z >= zMin; z -= 1.5) for (const x of [0, -2, 2, -4, 4]) {
+    if (x > cell.x0 + 0.8 && x < cell.x1 - 0.8) out.push({ x, y, z });
+  }
+  return out;
+}
+
+// Portal from panel A (reachable) to panel B, and walk through.
+function portalHop(cell, from, to, standZ = [cell.zS - 1, cell.zS - 1], floorY = cell.y0, exclude = () => false) {
+  const nearStands = standsIn(cell, standZ[0], standZ[1], floorY).filter((s) => !exclude(s));
+  fireAt('blue', from, [...nearStands, ...standsIn(cell, from.point.z - 3, from.point.z + 3, floorY).filter((s) => !exclude(s))]);
+  fireAt('orange', to, nearStands);
+  walkThroughPortal(from, floorY);
+}
+
+function typeCode(pos, code, y0) {
+  standLook(pos.x, y0, pos.z + 1.0, [pos.x, pos.y + 0.19, pos.z]);
+  if (G().aim?.kind !== 'keypad') fail('could not aim at the keypad');
+  G().typeCode(code);
+}
+
+function pressButton(btn, y0) {
+  for (const [dx, dz] of [[0, 1.2], [0, -1.2], [1.2, 0], [-1.2, 0]]) {
+    standLook(btn.x + dx, y0, btn.z + dz, [btn.x, btn.y + 0.02, btn.z]);
+    if (G().aim?.kind === 'button') {
+      G().interact();
+      step(0.1);
+      return;
+    }
+  }
+  fail('could not aim at a button');
+}
+
+const SOLVERS = {
+  grow_plate(c) {
+    growOntoPlate(c.cube, c.plates[0], c);
+  },
+  two_plates(c) {
+    growOntoPlate(c.cubes[0], c.plates[0], c);
+    growOntoPlate(c.cubes[1], c.plates[1], c);
+  },
+  step_ledge(c) {
+    const { front, top } = c.ledge;
+    pickUp(c.cube, c.y0);
+    const ok = (cube) => {
+      const p = cube.mesh.position;
+      return cube.size > 0.8 && cube.size < 1.45 && p.z - cube.size / 2 < front + 0.6 && p.y - cube.size / 2 < c.y0 + 0.5;
+    };
+    const stands = [9, 7, 5, 11].map((back) => ({ x: 0, y: c.y0, z: Math.min(c.zS - 0.8, front + back) }));
+    const cube = placeHeldAt({ x: 0, z: front }, ok, stands);
+    const p = cube.mesh.position;
+    place(p.x, c.y0, p.z + cube.size / 2 + 2.2, 0, 0);
+    hold(['KeyW', 'Space'], 2.5);
+    if (G().player.pos.y < top - 0.2) fail('could not climb onto the ledge');
+  },
+  shrink_socket(c) {
+    const s = c.socket;
+    const p = c.cube.mesh.position;
+    // Grab the big cube from a few metres away so it shrinks a lot.
+    standLook(p.x, c.y0, p.z + c.cube.size / 2 + 3.1, [p.x, p.y, p.z]);
+    G().interact();
+    if (held() !== c.cube) fail('could not pick up the big cube');
+    const sgn = s.side === 'e' ? 1 : -1;
+    const inSocket = (cube) => {
+      const q = cube.mesh.position;
+      return cube.size <= s.maxSize - 0.02 && Math.abs(q.z - s.z) < 0.5 - cube.size / 2 + 0.02 && Math.abs(q.y - s.y) < 0.45 &&
+        (sgn > 0 ? q.x > s.mouthX + cube.size / 2 - 0.05 : q.x < s.mouthX - cube.size / 2 + 0.05);
+    };
+    for (const back of [1.0, 0.8, 1.2, 0.6, 1.5]) {
+      const sx = s.mouthX - sgn * back;
+      for (let dy = -0.3; dy <= 0.3; dy += 0.05) {
+        standLook(sx, c.y0, s.z, [s.x, s.y + dy, s.z]);
+        if (inSocket(held())) {
+          drop();
+          return;
+        }
+      }
+    }
+    fail('could not fit the cube into the socket');
+  },
+  portal_glass(c) {
+    portalHop(c, c.near[0], c.far[0], [c.glassZ + 1.5, c.zS - 1]);
+  },
+  portal_pit(c) {
+    portalHop(c, c.near[0], c.far[0], [c.pitS + 0.8, c.zS - 1]);
+  },
+  portal_ledge(c) {
+    const from = c.floorPanels[0], to = c.ledgePanel;
+    fireAt('blue', from, standsIn(c, c.ledge.front + 1.5, c.zS - 1));
+    fireAt('orange', to, standsIn(c, c.ledge.front + 3, c.zS - 0.8).reverse());
+    walkThroughPortal(from, c.y0);
+  },
+  anamorph_code(c) { typeCode(c.keypad, c.code, c.y0 + c.exitY); },
+  window_code(c) { typeCode(c.keypad, c.code, c.y0 + c.exitY); },
+  color_count(c) { typeCode(c.keypad, c.code, c.y0 + c.exitY); },
+  dark_room(c) {
+    pressButton(c.button, c.y0);
+    step(1);
+    typeCode(c.keypad, c.code, c.y0 + c.exitY);
+  },
+  button_sequence(c) {
+    for (const btn of c.buttons) pressButton(btn, c.y0);
+  },
+  loop_rooms(c) {
+    const forward = c.target > c.room;
+    place(forward ? c.x0 + 2 : c.x1 - 2, c.y0, c.zc, forward ? -Math.PI / 2 : Math.PI / 2, 0);
+    G().keys.add('KeyW');
+    for (let t = 0; t < 90 && c.room !== c.target; t += 0.25) step(0.25);
+    G().keys.delete('KeyW');
+    step(0.1);
+    if (c.room !== c.target) fail(`loop stuck in room ${c.room}, wanted ${c.target}`);
+  },
+  bigger_inside(c) {
+    place(c.closet.x, c.y0, c.closet.front + 1.6, 0, 0);
+    hold(['KeyW'], 1.2);
+    if (G().player.pos.x < 1000) fail('did not enter the closet');
+    pressButton(c.button, 0);
+    place(c.remoteX, 0, c.remotePortalZ - 1.6, Math.PI, 0);
+    hold(['KeyW'], 1.2);
+    if (G().player.pos.x > 1000) fail('did not come back out of the closet');
+  },
+  cube_rescue(c) {
+    const { encl } = c;
+    const sgn = encl.side === 'e' ? 1 : -1;
+    const lo = Math.min(encl.inner, encl.wallX) - 0.6, hi = Math.max(encl.inner, encl.wallX) + 0.6;
+    const inCase = (s) => s.x > lo && s.x < hi && Math.abs(s.z - encl.zc) < 2.5;
+    portalHop(c, c.outside[0], c.inside, [c.zN + 7, c.zS - 1], c.y0, inCase);
+    pickUp(c.cube, c.y0, 1.1);
+    // Walk back out through the inside portal, holding the cube.
+    const p = c.inside.point;
+    place(p.x - sgn * 1.4, c.y0, p.z, sgn > 0 ? -Math.PI / 2 : Math.PI / 2, -0.35);
+    hold(['KeyW'], 1.2);
+    if (held() !== c.cube) fail('lost the cube going through the portal');
+    if (Math.abs(G().player.pos.x - encl.wallX) < 3.4 && Math.abs(G().player.pos.z - encl.zc) < 1.8) fail('still inside the glass case');
+    growOntoPlate(c.cube, c.plates[0], c);
+  },
+};
+
+// Wall switches face along rotY; stand in front of them.
+function pressSwitch(sw, y0) {
+  const nx = Math.sin(sw.rotY), nz = Math.cos(sw.rotY);
+  standLook(sw.x + nx * 1.1, y0, sw.z + nz * 1.1, [sw.x, sw.y + 0.1, sw.z]);
+  if (G().aim?.kind !== 'button') fail('could not aim at a wall switch');
+  G().interact();
+  step(0.1);
+}
+
+function climbFromSouth(c, x, z, sec = 3) {
+  place(x, c.y0, z, 0, 0);
+  hold(['KeyW', 'Space'], sec);
+  if (G().player.pos.y < c.ledge.top - 0.2) fail('could not climb onto the ledge');
+}
+
+function growStep(c, cube, minSize, maxSize) {
+  const { front } = c.ledge;
+  pickUp(cube, c.y0);
+  const ok = (k) => {
+    const p = k.mesh.position;
+    return k.size > minSize && k.size < maxSize && p.z - k.size / 2 < front + 0.6 && p.y - k.size / 2 < c.y0 + 0.5 && Math.abs(p.x) < c.x1 - 1;
+  };
+  const stands = [9, 7, 5, 11, 13].map((back) => ({ x: 0, y: c.y0, z: Math.min(c.zS - 0.8, front + back) }));
+  return placeHeldAt({ x: 0, z: front }, ok, stands);
+}
+
+Object.assign(SOLVERS, {
+  bounce_pad(c) {
+    if (c.plates.length) growOntoPlate(c.cube, c.plates[0], c);
+    place(c.pad.x, c.y0, c.pad.z + 2.2, 0, 0);
+    hold(['KeyW'], 2.5);
+    if (G().player.pos.y < c.ledge.top - 0.2) fail('launch pad did not get us onto the ledge');
+  },
+  fan_lift(c) {
+    if (c.plates.length) growOntoPlate(c.cube, c.plates[0], c);
+    place(c.fan.x, c.y0, c.fan.z, 0, 0);
+    step(3);
+    hold(['KeyW'], 2);
+    if (G().player.pos.y < c.ledge.top - 0.2) fail('updraft did not get us onto the ledge');
+  },
+  keycard_doors(c) {
+    for (const s of c.steps) {
+      if (s.type === 'take') pressButton(s, c.y0);
+      else pressSwitch(s, c.y0);
+      step(1.4); // let booth doors finish opening
+    }
+  },
+  laser_fence(c) {
+    const { beam } = c;
+    pickUp(c.cube, c.y0);
+    const ok = (k) => {
+      const p = k.mesh.position;
+      return k.size >= c.need && Math.abs(p.x - beam.x) < k.size / 2 - 0.1 &&
+        p.z < beam.z0 - k.size / 2 - 0.05 && p.z > beam.z1 + k.size / 2 + 0.05 && p.y - k.size / 2 < c.y0 + 0.5;
+    };
+    const stands = [];
+    for (const dz of [0.8, 1.6, 2.4]) for (const dx of [0, 1, -1]) stands.push({ x: beam.x + dx, y: c.y0, z: c.zS - dz });
+    placeHeldAt({ x: beam.x, z: (beam.z0 + beam.z1) / 2 }, ok, stands);
+    step(0.5);
+    place(-beam.x * 0.3, c.y0, c.fenceZ + 2, 0, 0);
+    hold(['KeyW'], 1.5);
+  },
+  memory_sequence(c) {
+    pressButton(c.start, c.y0);
+    step(c.playTime + 0.5);
+    for (const btn of c.buttons) pressButton(btn, c.y0);
+  },
+  stack_ledge(c) {
+    // A staircase: a tall cube against the ledge, a short one in front of it.
+    const [a, bCube] = c.cubes;
+    const rise = c.ledge.top - c.y0;
+    const tallMin = Math.max(1.6, rise - 1.4), tallMax = Math.min(2.8, tallMin + 0.9);
+    const tall = growStep(c, a, tallMin, tallMax);
+    step(0.5);
+    const p1 = tall.mesh.position;
+    const south = p1.z + tall.size / 2;
+    pickUp(bCube, c.y0);
+    const inFront = (k) => {
+      const p = k.mesh.position;
+      return k.size > Math.max(0.8, tall.size - 1.45) && k.size < 1.45 && Math.abs(p.x - p1.x) < tall.size / 2 - 0.3 &&
+        p.z - k.size / 2 > south - 0.05 && p.z - k.size / 2 < south + 0.5 && p.y - k.size / 2 < c.y0 + 0.4;
+    };
+    const stands = [6, 8, 5, 10, 12].map((back) => ({ x: p1.x, y: c.y0, z: Math.min(c.zS - 0.8, south + back) }));
+    const short = placeHeldAt({ x: p1.x, z: south + 0.7 }, inFront, stands);
+    step(1);
+    climbFromSouth(c, p1.x, short.mesh.position.z + short.size / 2 + 2.2, 5);
+  },
+  math_code(c) { typeCode(c.keypad, c.code, c.y0 + c.exitY); },
+  collapsing_floor(c) {
+    // Sprint across; jump just before each missing tile (gaps lists their south edges).
+    place(0, c.y0, c.pitS + 1.2, 0, 0);
+    const k = G().keys;
+    k.add('KeyW');
+    k.add('ShiftLeft');
+    const jumped = new Set();
+    for (let t = 0; t < (c.pitS - c.pitN) / 5 + 3 && !c.done; t += FRAME) {
+      const z = G().player.pos.z;
+      for (const g of c.gaps) {
+        if (!jumped.has(g) && z < g + 0.9 && z > g) {
+          jumped.add(g);
+          k.add('Space');
+        }
+      }
+      step(FRAME);
+      k.delete('Space');
+    }
+    k.delete('KeyW');
+    k.delete('ShiftLeft');
+    step(0.2);
+  },
+  teleport_maze(c) {
+    for (const hop of c.route) {
+      const yaw = Math.atan2(-(hop.x - hop.from.x), -(hop.z - hop.from.z));
+      place(hop.from.x, c.y0, hop.from.z, yaw, 0);
+      G().keys.add('KeyW');
+      let arrived = false;
+      for (let t = 0; t < 3 && !arrived; t += 0.05) {
+        step(0.05);
+        const p = G().player.pos;
+        arrived = Math.hypot(p.x - hop.to.x, p.z - hop.to.z) < 0.6;
+      }
+      G().keys.delete('KeyW');
+      step(0.1);
+      if (!arrived) fail('teleporter did not take us where expected');
+    }
+  },
+  sprint_door(c) {
+    pressButton(c.button, c.y0);
+    place(0, c.y0, c.button.z - 0.8, 0, 0); // down the middle, lined up with the door
+    hold(['KeyW', 'ShiftLeft'], c.window + 1);
+  },
+});
+
+function walkToNext(c) {
+  const y = c.y0 + c.exitY;
+  place(0, y, c.zN + 1.2, 0, 0);
+  hold(['KeyW'], 2.6); // corridors are 3–6 m long
+}
+
+export async function solve(id, { daily = false } = {}) {
+  const g = G();
+  g.manual = true;
+  g.render = false;
+  g.play(id, daily);
+  step(0.2);
+  const cells = level().debug?.cells;
+  if (!cells) return { id, ok: false, reason: 'not a generated level' };
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    try {
+      SOLVERS[c.id](c);
+      step(0.3);
+      if (!c.done) fail('puzzle did not register as solved');
+      walkToNext(c);
+      if (i < cells.length - 1 && G().player.pos.z > cells[i + 1].zS) fail('could not walk through the exit door');
+    } catch (err) {
+      return { id, ok: false, module: c.id, cell: i, reason: err.message, modules: cells.map((x) => x.id) };
+    }
+  }
+  hold(['KeyW'], 2.5);
+  const ok = G().game.escaped;
+  return { id, ok, reason: ok ? null : 'did not reach the exit', modules: cells.map((x) => x.id) };
+}
+
+export async function solveAll(ids, onProgress) {
+  const results = [];
+  for (const id of ids) {
+    let r;
+    try {
+      r = await solve(id);
+    } catch (err) {
+      r = { id, ok: false, reason: `crash: ${err.message}` };
+    }
+    results.push(r);
+    onProgress?.(r);
+    await new Promise((res) => setTimeout(res, 0));
+  }
+  return results;
+}

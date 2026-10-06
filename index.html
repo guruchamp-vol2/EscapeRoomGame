@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perspective Lab</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="hud" class="hidden">
+      <div id="objectives">
+        <div class="obj-chamber" id="obj-chamber"></div>
+        <div class="obj-head"><span>Objectives</span><span id="hint-count"></span></div>
+        <ol id="obj-list"></ol>
+        <p id="obj-detail"></p>
+      </div>
+      <div id="inventory"></div>
+      <div id="timer">00:00</div>
+      <div id="ghost-delta"></div>
+      <div id="crosshair">
+        <span class="ch-l"></span><span class="ch-dot"></span><span class="ch-r"></span>
+      </div>
+      <div id="prompt"></div>
+      <div id="toasts"></div>
+      <div id="achievement-pop"></div>
+      <div id="note-pop"><p class="note-head"></p><p class="note-body"></p><p class="note-foot"></p></div>
+      <div id="keyhints"><kbd>H</kbd> Hint <kbd>R</kbd> Recall cube <kbd>Esc</kbd> Pause</div>
+    </div>
+    <div id="chapter"><p class="ch-num" id="chapter-num"></p><h2 id="chapter-name"></h2><p id="chapter-tag"></p></div>
+    <div id="fade"></div>
+
+    <div id="menu">
+      <div class="card">
+        <section data-screen="main">
+          <div class="stat-bar" id="stat-bar"></div>
+          <h1>PERSPECTIVE<span>LAB</span></h1>
+          <p class="sub">Nothing here is quite what it looks like.</p>
+          <div class="quests" id="quests"></div>
+          <div class="buttons">
+            <button class="primary" data-action="continue" id="continue-btn">Play</button>
+            <button class="daily" data-action="daily" id="daily-btn">Daily challenge</button>
+            <div class="row">
+              <button data-action="chambers">Chambers</button>
+              <button data-action="leaderboard">Leaderboard</button>
+            </div>
+            <div class="row">
+              <button data-action="workshop">Workshop</button>
+              <button data-action="journal">Journal</button>
+            </div>
+            <div class="row3">
+              <button data-action="profile">Profile</button>
+              <button data-action="settings">Settings</button>
+              <button data-action="controls">Controls</button>
+            </div>
+          </div>
+          <div class="account-bar" id="account-bar"></div>
+        </section>
+
+        <section data-screen="chambers">
+          <p class="eyebrow">Select a level</p>
+          <div class="group-tabs" id="group-tabs"></div>
+          <p class="group-tagline" id="group-tagline"></p>
+          <div class="chambers" id="chambers"></div>
+          <label class="check ghost-toggle"><input type="checkbox" id="race-ghost" /> Race the fastest ghost</label>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="workshop">
+          <p class="eyebrow">Workshop</p>
+          <p class="wallet" id="wallet"></p>
+          <div class="tabs" id="shop-tabs">
+            <button data-slot="portal" class="active">Portals</button>
+            <button data-slot="cube">Cubes</button>
+            <button data-slot="hat">WREN's hats</button>
+          </div>
+          <div class="shop" id="shop"></div>
+          <p class="form-note">Earn ◆ Fragments by finishing levels, earning stars, daily quests, streaks and finding the curator's notes.</p>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="journal">
+          <p class="eyebrow">The Curator's Journal</p>
+          <p class="sub" id="journal-count"></p>
+          <div class="journal" id="journal"></div>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="pause">
+          <p class="eyebrow" id="pause-chamber">Paused</p>
+          <h2 id="pause-objective"></h2>
+          <p class="sub" id="pause-time"></p>
+          <div class="buttons">
+            <button class="primary" data-action="resume">Resume</button>
+            <div class="row">
+              <button data-action="settings">Settings</button>
+              <button data-action="controls">Controls</button>
+            </div>
+            <div class="row">
+              <button class="danger" data-action="restart">Restart chamber</button>
+              <button data-action="quit">Quit to menu</button>
+            </div>
+          </div>
+        </section>
+
+        <section data-screen="settings">
+          <p class="eyebrow">Settings</p>
+          <div class="settings">
+            <label>Mouse sensitivity <output data-for="sensitivity"></output>
+              <input type="range" name="sensitivity" min="0.2" max="3" step="0.05" /></label>
+            <label>Field of view <output data-for="fov"></output>
+              <input type="range" name="fov" min="60" max="100" step="1" /></label>
+            <label>Volume <output data-for="volume"></output>
+              <input type="range" name="volume" min="0" max="1" step="0.05" /></label>
+            <label class="check"><input type="checkbox" name="highQuality" /> High-quality graphics (bloom, shadows)</label>
+            <label class="check"><input type="checkbox" name="wren" /> WREN commentary</label>
+            <label class="check"><input type="checkbox" name="headBob" /> Head bob</label>
+            <label class="check"><input type="checkbox" name="invertY" /> Invert mouse Y</label>
+            <label class="check"><input type="checkbox" name="showTimer" /> Show timer</label>
+          </div>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="controls">
+          <p class="eyebrow">Controls</p>
+          <table class="controls">
+            <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Move</td></tr>
+            <tr><td><kbd>Shift</kbd></td><td>Sprint</td></tr>
+            <tr><td><kbd>Space</kbd></td><td>Jump</td></tr>
+            <tr><td><kbd>E</kbd></td><td>Pick up / drop / use</td></tr>
+            <tr><td><kbd>LMB</kbd> <kbd>RMB</kbd></td><td>Fire blue / orange portal</td></tr>
+            <tr><td><kbd>0</kbd>–<kbd>9</kbd></td><td>Type on a keypad you're looking at</td></tr>
+            <tr><td><kbd>R</kbd></td><td>Recall cubes to where they started</td></tr>
+            <tr><td><kbd>H</kbd></td><td>Hint</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Pause</td></tr>
+          </table>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="auth">
+          <div class="tabs" id="auth-tabs">
+            <button data-mode="login" class="active">Log in</button>
+            <button data-mode="register">Create account</button>
+          </div>
+          <form id="auth-form" class="form" autocomplete="on">
+            <label>Username
+              <input name="username" autocomplete="username" maxlength="16" required /></label>
+            <label class="register-only">Email <span class="optional">optional, for password resets</span>
+              <input name="email" type="email" autocomplete="email" maxlength="254" /></label>
+            <label>Password
+              <input name="password" type="password" autocomplete="current-password" maxlength="128" required /></label>
+            <p class="form-note" id="auth-note"></p>
+            <p class="form-error" id="auth-error"></p>
+            <button class="primary" type="submit" id="auth-submit">Log in</button>
+            <button type="button" class="link login-only" data-action="forgot">Forgot your password?</button>
+          </form>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="forgot">
+          <p class="eyebrow">Reset password</p>
+          <form id="forgot-form" class="form">
+            <p class="form-note">Enter your username or email. If the account has an email address, we'll send it a reset link.</p>
+            <label>Username or email <input name="login" maxlength="254" required /></label>
+            <p class="form-error" id="forgot-error"></p>
+            <p class="form-ok" id="forgot-ok"></p>
+            <button class="primary" type="submit">Send reset link</button>
+          </form>
+          <div class="buttons"><button data-action="auth">Back to log in</button></div>
+        </section>
+
+        <section data-screen="reset">
+          <p class="eyebrow">Choose a new password</p>
+          <form id="reset-form" class="form">
+            <label>New password
+              <input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
+            <label>Confirm password
+              <input name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
+            <p class="form-error" id="reset-error"></p>
+            <button class="primary" type="submit">Save password</button>
+          </form>
+          <div class="buttons"><button data-action="home">Cancel</button></div>
+        </section>
+
+        <section data-screen="leaderboard">
+          <p class="eyebrow">Leaderboard</p>
+          <select id="board-level" class="select"></select>
+          <div class="tabs" id="board-tabs">
+            <button data-board="all" class="active">All time</button>
+            <button data-board="weekly">This week</button>
+            <button data-board="nohints">No hints</button>
+            <button data-board="daily">Daily</button>
+          </div>
+          <div class="board" id="board"></div>
+          <p class="board-you" id="board-you"></p>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="profile">
+          <p class="eyebrow" id="profile-eyebrow">Profile</p>
+          <h2 id="profile-name"></h2>
+          <div class="stats" id="profile-stats"></div>
+          <form class="email-form" id="email-form">
+            <input name="email" type="email" placeholder="Add an email for password resets" maxlength="254" />
+            <button type="submit">Save</button>
+          </form>
+          <p class="form-error" id="email-error"></p>
+          <p class="eyebrow section-gap">Chambers</p>
+          <table class="splits" id="profile-levels"></table>
+          <p class="eyebrow section-gap" id="ach-count">Achievements</p>
+          <div class="achievements" id="profile-achievements"></div>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="win">
+          <p class="eyebrow" id="win-eyebrow">Chamber complete</p>
+          <h1 id="win-title">CHAMBER<span>CLEAR</span></h1>
+          <p class="record hidden" id="win-record">New best time!</p>
+          <p class="win-rank" id="win-rank"></p>
+          <p class="win-ghost" id="win-ghost"></p>
+          <div class="win-stars" id="win-stars"></div>
+          <div class="win-rewards" id="win-rewards"></div>
+          <div class="stats" id="win-stats"></div>
+          <div id="win-new-ach"></div>
+          <p class="eyebrow section-gap">Splits</p>
+          <table class="splits" id="win-splits"></table>
+          <div class="buttons">
+            <button class="primary" data-action="next" id="next-btn">Next chamber</button>
+            <div class="row">
+              <button data-action="replay">Replay</button>
+              <button data-action="leaderboard">Leaderboard</button>
+            </div>
+            <button data-action="home">Main menu</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
