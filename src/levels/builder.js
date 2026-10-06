@@ -5,6 +5,7 @@ import { makeCollider, setCollider } from '../physics.js';
 import { PerspectiveCube } from '../perspective.js';
 import { Portal } from '../portals.js';
 import { tileTexture, cubeTexture, signTexture, dynamicTexture, dustTexture } from '../textures.js';
+import { colorLetter } from '../a11y.js';
 
 const NORMAL_ROT = { '+x': Math.PI / 2, '-x': -Math.PI / 2, '+z': 0, '-z': Math.PI };
 
@@ -479,7 +480,31 @@ export class LevelBuilder {
       },
     };
     cap.userData.press = button.press;
+    this.colorTag(color, x, top + 0.45, z);
     return button;
+  }
+
+  // Colour-blind mode: a floating letter naming a colour-coded object's colour.
+  colorTag(hex, x, y, z, size = 0.32) {
+    const letter = colorLetter(hex);
+    if (!letter) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d');
+    g.fillStyle = 'rgba(8,10,14,0.85)';
+    g.beginPath(); g.arc(32, 32, 30, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = hex; g.lineWidth = 4; g.stroke();
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 38px system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(letter, 32, 34);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+    sprite.scale.setScalar(size);
+    sprite.position.set(x, y, z);
+    this.scene.add(sprite);
+    return sprite;
   }
 
   // A flat wall-mounted switch (card reader, lever panel). `rotY` = facing.
@@ -502,6 +527,8 @@ export class LevelBuilder {
       this.solids.push(m);
     }
     sw.setLabel = (text) => { base.userData.label = text; light.userData.label = text; };
+    const tagAt = new THREE.Vector3(0, 0.45, 0.12).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotY);
+    this.colorTag(color, x + tagAt.x, y + tagAt.y, z + tagAt.z, 0.26);
     return sw;
   }
 
@@ -593,6 +620,7 @@ export class LevelBuilder {
     core.rotation.x = -Math.PI / 2;
     core.position.set(x, y + 0.03, z);
     this.scene.add(ring, core);
+    this.colorTag(color, x, y + 0.9, z, 0.36);
     let armed = true;
     let t = Math.random() * 6;
     this.updaters.push((dt) => {

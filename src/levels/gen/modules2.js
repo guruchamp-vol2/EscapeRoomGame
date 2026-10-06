@@ -113,6 +113,8 @@ export const MODULE_IMPL_2 = {
         };
         b.scene.add(mesh, hit);
         b.solids.push(hit);
+        const tag = b.colorTag(color.hex, x, y + 0.35, z, 0.24);
+        if (tag) b.updaters.push(() => (tag.visible = mesh.visible));
         let t = rng() * 6;
         b.updaters.push((dt) => { t += dt; mesh.rotation.y += dt; mesh.position.y = y + Math.sin(t * 2) * 0.04; });
         steps.push({ type: 'take', x, y, z });

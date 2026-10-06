@@ -303,14 +303,14 @@ Object.assign(SOLVERS, {
   },
   laser_fence(c) {
     const { beam } = c;
-    pickUp(c.cube, c.y0);
+    pickUp(c.cube, c.y0, 0.9); // grab close: the cube must grow a lot
     const ok = (k) => {
       const p = k.mesh.position;
       return k.size >= c.need && Math.abs(p.x - beam.x) < k.size / 2 - 0.1 &&
         p.z < beam.z0 - k.size / 2 - 0.05 && p.z > beam.z1 + k.size / 2 + 0.05 && p.y - k.size / 2 < c.y0 + 0.5;
     };
     const stands = [];
-    for (const dz of [0.8, 1.6, 2.4]) for (const dx of [0, 1, -1]) stands.push({ x: beam.x + dx, y: c.y0, z: c.zS - dz });
+    for (const dz of [0.8, 1.6, 2.4, 3.4, 4.6]) for (const dx of [0, 1, -1, 2, -2]) stands.push({ x: beam.x + dx, y: c.y0, z: c.zS - dz });
     placeHeldAt({ x: beam.x, z: (beam.z0 + beam.z1) / 2 }, ok, stands);
     step(0.5);
     place(-beam.x * 0.3, c.y0, c.fenceZ + 2, 0, 0);
@@ -387,10 +387,26 @@ Object.assign(SOLVERS, {
   },
 });
 
+// Walk towards (x, z), steering every frame.
+function walkTo(x, z, maxSec = 8) {
+  const g = G(), p = g.player;
+  g.keys.add('KeyW');
+  for (let t = 0; t < maxSec; t += FRAME) {
+    const dx = x - p.pos.x, dz = z - p.pos.z;
+    if (Math.hypot(dx, dz) < 0.3) break;
+    p.yaw = Math.atan2(-dx, -dz);
+    g.update(FRAME);
+  }
+  g.keys.delete('KeyW');
+  step(0.05);
+}
+
+// From just inside the exit door, through the connector (stairs, chicanes…).
 function walkToNext(c) {
   const y = c.y0 + c.exitY;
   place(0, y, c.zN + 1.2, 0, 0);
-  hold(['KeyW'], 2.6); // corridors are 3–6 m long
+  walkTo(0, c.zN - 0.6);
+  for (const [x, z] of c.path ?? [[0, c.zN - 4]]) walkTo(x, z);
 }
 
 export async function solve(id, { daily = false } = {}) {
@@ -413,7 +429,7 @@ export async function solve(id, { daily = false } = {}) {
       return { id, ok: false, module: c.id, cell: i, reason: err.message, modules: cells.map((x) => x.id) };
     }
   }
-  hold(['KeyW'], 2.5);
+  walkTo(0, level().debug.exitZ, 6);
   const ok = G().game.escaped;
   return { id, ok, reason: ok ? null : 'did not reach the exit', modules: cells.map((x) => x.id) };
 }

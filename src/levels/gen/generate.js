@@ -6,10 +6,21 @@ import { Cell, T } from './cell.js';
 import { MODULE_IMPL as BASE } from './modules.js';
 import { MODULE_IMPL_2 } from './modules2.js';
 import { decorate, centerpiece } from './decor.js';
+import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, CONNECTORS, STARTS, EXITS } from './spaces.js';
 
 const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2 };
 import { signTexture } from '../../textures.js';
-import { makeRng, range } from '../../random.js';
+import { makeRng, range, pick } from '../../random.js';
+
+// Weighted connector choice; never the same kind twice in a row.
+const CONNECTOR_WEIGHTS = { hall: 3, stairs: 2, bridge: 2, chicane: 1.6, gallery: 1.6 };
+function pickConnector(rng, prev, canClimb) {
+  const kinds = CONNECTORS.filter((k) => k !== prev && (canClimb || k !== 'stairs'));
+  const total = kinds.reduce((t, k) => t + CONNECTOR_WEIGHTS[k], 0);
+  let r = rng() * total;
+  for (const k of kinds) if ((r -= CONNECTOR_WEIGHTS[k]) <= 0) return k;
+  return kinds[0];
+}
 
 export function buildGenerated(plan, b, ctx) {
   const rng = makeRng(plan.seed);
@@ -19,20 +30,11 @@ export function buildGenerated(plan, b, ctx) {
   if (theme.sky) b.skyDome(theme.sky);
   if (theme.fogDensity) b.scene.fog = new THREE.FogExp2(theme.fog, theme.fogDensity);
 
-  // Start corridor.
-  b.box(-1.6, -0.4, 0, 1.6, 0, 6.4, m.floor, { tile: 2 });
-  b.box(-1.6, 0, 0, -1.2, 3.2, 6.4, m.wall);
-  b.box(1.2, 0, 0, 1.6, 3.2, 6.4, m.wall);
-  b.box(-1.6, 0, 6.0, 1.6, 3.2, 6.4, m.wall);
-  b.box(-1.6, 3.2, 0, 1.6, 3.5, 6.4, m.ceiling);
-  b.strip(-1.2, 0, 0, -1.17, 0.06, 6);
-  b.strip(1.17, 0, 0, 1.2, 0.06, 6);
-  const title = plan.number ? `LEVEL ${plan.number}` : 'DAILY';
-  b.sign(signTexture([{ text: title, size: 44, color: theme.accent }, { text: plan.name.replace(/^Daily · /, ''), size: 60 }, { text: plan.worldName, size: 34, color: '#9aa4ae' }],
-    { w: 640, h: 320, bg: '#0b0d10' }), 1.9, 0.95, -1.18, 1.8, 3.4, Math.PI / 2, { glow: 1.2 });
-  const startLight = new THREE.PointLight(theme.lampColor, 8, 0, 2);
-  startLight.position.set(0, 2.8, 3);
-  b.scene.add(startLight);
+  // Layout choices come from their own stream so they don't disturb the
+  // puzzle modules' random numbers.
+  const layout = makeRng(`layout:${plan.seed}`);
+  const startKind = pick(layout, STARTS);
+  buildStart(b, plan, layout, startKind);
 
   const cells = [];
   let z0 = -T, y0 = 0;
@@ -45,11 +47,13 @@ export function buildGenerated(plan, b, ctx) {
       exitY: dims.exitY ?? 0, floorGaps, dark: !!dims.dark, ceiling: dims.ceiling,
       variant: theme.variant?.(slot), connector: range(rng, 3, 6),
     });
+    dressRoom(b, cell, roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling));
     const inst = impl.build(cell, b, ctx, rng, { slot, remoteX: 2000 + slot * 400, diff: plan.diff ?? 0, twists: plan.twists ?? [] }, dims);
     decorate(b, cell, rng, inst.reserve);
     centerpiece(b, cell, rng);
-    cells.push({ id, cell, inst, done: false });
-    const next = cell.connector();
+    const kind = pickConnector(layout, cells.at(-1)?.connector, dims.exitY == null || dims.exitY === 0);
+    const next = buildConnector(b, cell, layout, kind);
+    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path });
     z0 = next.z;
     y0 = next.y;
   });
@@ -100,17 +104,11 @@ export function buildGenerated(plan, b, ctx) {
     }
   }
 
-  // Final exit corridor.
+  // Final exit.
   const zEnd = z0 + T; // start of the last connector's far end
-  b.box(-1.6, y0 - 0.4, zEnd - 7, 1.6, y0, zEnd, m.floor, { tile: 2 });
-  b.box(-1.6, y0, zEnd - 7, -1.2, y0 + 3.2, zEnd, m.wall);
-  b.box(1.2, y0, zEnd - 7, 1.6, y0 + 3.2, zEnd, m.wall);
-  b.box(-1.6, y0, zEnd - 7.4, 1.6, y0 + 3.2, zEnd - 7, m.wall);
-  b.box(-1.6, y0 + 3.2, zEnd - 7, 1.6, y0 + 3.5, zEnd, m.ceiling);
-  b.sign(signTexture([{ text: 'FREEDOM', size: 90 }], { bg: '#f4fff8', fg: '#1a6b3a' }), 1.6, 0.8, 0, y0 + 1.6, zEnd - 6.98, 0, { glow: 1.4 });
-  const exitLight = new THREE.PointLight('#c8ffd8', 8, 0, 2);
-  exitLight.position.set(0, y0 + 2.6, zEnd - 5);
-  b.scene.add(exitLight);
+  const exitKind = pick(layout, EXITS);
+  buildExit(b, y0, zEnd, layout, exitKind);
+  buildVista(b, layout, { zMin: zEnd - 10, zMax: 8 });
 
   // Blackout twist: almost no light. The player gets a flashlight (F).
   const blackout = plan.twists?.includes('blackout');
@@ -165,10 +163,11 @@ export function buildGenerated(plan, b, ctx) {
       // Copy descriptors, not values, so live getters (e.g. the loop's room) stay live.
       cells: cells.map((entry) => Object.defineProperties({
         id: entry.id, x0: entry.cell.x0, x1: entry.cell.x1, zS: entry.cell.zS, zN: entry.cell.zN,
-        y0: entry.cell.y0, exitY: entry.cell.exitY,
+        y0: entry.cell.y0, exitY: entry.cell.exitY, path: entry.path, connector: entry.connector,
         get done() { return entry.done; },
       }, Object.getOwnPropertyDescriptors(entry.inst.debug))),
       exitZ: zEnd - 5.5,
+      layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector) },
     },
   };
 }

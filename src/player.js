@@ -7,6 +7,10 @@ const SPRINT_SPEED = 7;
 const JUMP_SPEED = 7.2;
 const STEP_HEIGHT = 0.35;
 const EPS = 0.001;
+// Forgiveness: jump shortly after walking off a ledge, or press jump just
+// before landing and it still happens.
+const COYOTE_TIME = 0.1;
+const JUMP_BUFFER = 0.13;
 
 export class Player {
   constructor(camera) {
@@ -19,6 +23,9 @@ export class Player {
     this.height = 1.75;
     this.eyeHeight = 1.6;
     this.onGround = false;
+    this.moveInput = null; // analog stick {x, y}, overrides WASD when set
+    this.coyote = 0;
+    this.jumpBuffer = 0;
     this._min = new THREE.Vector3();
     this._max = new THREE.Vector3();
   }
@@ -26,6 +33,7 @@ export class Player {
   spawn(pos, yaw) {
     this.pos.copy(pos);
     this.vel.set(0, 0, 0);
+    this.coyote = this.jumpBuffer = 0;
     this.yaw = yaw;
     this.pitch = 0;
   }
@@ -36,6 +44,11 @@ export class Player {
 
   center(out = new THREE.Vector3()) {
     return out.set(this.pos.x, this.pos.y + this.height / 2, this.pos.z);
+  }
+
+  // Called on the jump key's press (not while held).
+  queueJump() {
+    this.jumpBuffer = JUMP_BUFFER;
   }
 
   look(dx, dy, sensitivity = 1, invertY = false) {
@@ -96,6 +109,12 @@ export class Player {
     const len = Math.hypot(mx, mz);
     const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
     if (len > 0) { mx = (mx / len) * speed; mz = (mz / len) * speed; }
+    const a = this.moveInput;
+    if (a && (a.x || a.y)) {
+      // Stick: forward is -y. Magnitude gives walk speed; sprint still applies.
+      mx = (fx * -a.y + rx * a.x) * speed;
+      mz = (fz * -a.y + rz * a.x) * speed;
+    }
 
     const accel = this.onGround ? 14 : 2.5;
     const k = 1 - Math.exp(-accel * dt);
@@ -105,9 +124,14 @@ export class Player {
     // Events for sound/feedback, read by the game after update().
     this.jumped = false;
     this.landImpact = 0;
-    if (this.onGround && keys.has('Space')) {
+    this.coyote = this.onGround ? COYOTE_TIME : Math.max(0, this.coyote - dt);
+    this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+    const wantsJump = keys.has('Space') || this.jumpBuffer > 0;
+    if ((this.onGround || this.coyote > 0) && wantsJump && this.vel.y <= 0.01) {
       this.vel.y = JUMP_SPEED;
       this.jumped = true;
+      this.onGround = false;
+      this.coyote = this.jumpBuffer = 0;
     }
     this.vel.y -= GRAVITY * dt;
 

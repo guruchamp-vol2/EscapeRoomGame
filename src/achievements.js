@@ -19,6 +19,10 @@ export const ACHIEVEMENTS = [
   { key: 'quick', icon: '⏱️', name: 'Quick Thinker', desc: 'Escape the Lab in under 3 minutes.' },
   { key: 'speedrunner', icon: '⚡', name: 'Speedrunner', desc: 'Escape the Lab in under 90 seconds.' },
   { key: 'daily', icon: '📅', name: 'Daily Escapee', desc: 'Complete a daily challenge.' },
+  { key: 'shutterbug', icon: '📷', name: 'Shutterbug', desc: 'Save a picture in photo mode.' },
+  { key: 'bunny_hop', icon: '🐇', name: 'Bunny Hop', desc: 'Jump 1,000 times.' },
+  { key: 'marathon', icon: '⌛', name: 'Marathon', desc: 'Play for 3 hours in total.' },
+  { key: 'globetrotter', icon: '🥾', name: 'Globetrotter', desc: 'Walk 10 km inside the museum.' },
   { key: 'ghostbuster', icon: '👻', name: 'Ghostbuster', desc: 'Beat the ghost you were racing.' },
 ];
 

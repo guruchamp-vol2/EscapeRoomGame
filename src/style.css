@@ -467,3 +467,117 @@ section[data-screen="main"] .account-bar { justify-content: flex-start; }
 /* Make room for WREN's speech box above the menu card. */
 #menu { transition: padding-top 0.25s; }
 body.menu-open.wren-talking #menu { padding-top: 112px; }
+
+/* ---------- comfort, accessibility, feel ---------- */
+:root { --ui-scale: 1; --ch-scale: 1; }
+#objectives, #inventory, #timer, #ghost-delta, #prompt, #toasts, #keyhints, #achievement-pop, #note-pop, #wren-box, #menu .card { zoom: var(--ui-scale); }
+#crosshair { scale: var(--ch-scale); }
+#crosshair.pulse .ch-dot { animation: ch-pulse 0.3s ease-out; }
+@keyframes ch-pulse { 50% { transform: scale(3.2); background: #fff; } }
+body.pad-nav button:focus, body.pad-nav input:focus, body.pad-nav select:focus, body.pad-nav [data-level]:focus {
+  outline: 2px solid var(--portal-a); outline-offset: 2px;
+}
+
+#flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#flash.good { animation: flash 0.7s ease-out; box-shadow: inset 0 0 140px rgba(61, 255, 122, 0.45); }
+#flash.warn { animation: flash 0.7s ease-out; box-shadow: inset 0 0 160px rgba(255, 70, 70, 0.5); }
+#flash.snap { animation: flash 0.35s ease-out; background: rgba(255, 255, 255, 0.85); }
+@keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+#hold-ring {
+  position: absolute; left: 50%; top: calc(50% - 70px); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.15s;
+  font-size: 12px; color: var(--muted);
+}
+#hold-ring.show { opacity: 1; }
+#hold-ring svg { width: 40px; height: 40px; transform: rotate(-90deg); }
+#hold-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 100.5; stroke-dashoffset: 100.5; }
+
+#photo-hud {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; max-width: 92vw;
+  padding: 10px 16px; background: var(--panel); border-radius: 10px; font-size: 13px; color: var(--muted);
+}
+#photo-hud b { color: var(--ink); letter-spacing: 0.12em; }
+#photo-hud kbd { font-size: 11px; padding: 2px 6px; }
+#photo-grid {
+  position: fixed; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent calc(33.33% - 0.5px), rgba(255,255,255,0.35) 33.33%, transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255,255,255,0.35) 66.66%, transparent calc(66.66% + 0.5px)),
+    linear-gradient(0deg, transparent calc(33.33% - 0.5px), rgba(255,255,255,0.35) 33.33%, transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255,255,255,0.35) 66.66%, transparent calc(66.66% + 0.5px));
+}
+body.photo #wren-box { opacity: 0 !important; }
+
+.tip { margin: 14px 0 0; font-size: 13px; color: var(--muted); font-style: italic; }
+.menu-foot { margin: 10px 0 0; text-align: right; font-size: 12px; }
+.binds button.bind { min-width: 92px; padding: 4px 10px; font: 600 13px var(--mono); }
+.binds button.bind.listening { border-color: var(--portal-a); color: var(--portal-a); animation: blink 0.8s infinite; }
+@keyframes blink { 50% { opacity: 0.5; } }
+.stats.life { grid-template-columns: 1fr 1fr; }
+section[data-screen="settings"] .tabs button { font-size: 12px; padding: 6px 4px; }
+
+.credits { height: 380px; overflow: hidden; position: relative; text-align: center;
+  mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); }
+.credits > * { position: relative; }
+.credits.roll > * { animation: credits-roll 34s linear forwards; }
+.credits p { margin: 4px 0; }
+.credits .eyebrow { margin-top: 26px; }
+.credits .big { font-size: 22px; font-weight: 700; }
+@keyframes credits-roll { from { transform: translateY(380px); } to { transform: translateY(-820px); } }
+@media (prefers-reduced-motion: reduce) { .credits { height: auto; mask-image: none; } .credits.roll > * { animation: none; } }
+
+/* ---------- touch controls (phones & tablets) ---------- */
+#touch { position: fixed; inset: 0; display: none; touch-action: none; -webkit-user-select: none; }
+#touch.on { display: block; }
+body.touch canvas, body.touch #menu { touch-action: manipulation; }
+body.touch #keyhints { display: none; }
+.t-look { position: absolute; inset: 0; }
+.t-stick {
+  position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.06); opacity: 0; pointer-events: none;
+  left: 18%; top: 72%;
+}
+#touch.on .t-stick { opacity: 0.45; }
+#touch.on .t-stick.on { opacity: 1; }
+.t-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); transform: translate(-50%, -50%); }
+.t-buttons {
+  position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: repeat(3, 64px); grid-template-areas: "hint recall pause" "orange blue photo" "interact jump flash";
+  gap: 10px; align-items: center; justify-items: center;
+}
+.t-buttons button {
+  width: 60px; height: 60px; padding: 0; border-radius: 50%; font: 700 14px system-ui; color: #fff;
+  background: rgba(12, 16, 22, 0.55); border: 2px solid rgba(255, 255, 255, 0.3); touch-action: none;
+}
+.t-buttons button.down { background: rgba(255, 255, 255, 0.3); transform: scale(0.94); }
+.t-buttons .big { width: 72px; height: 72px; }
+.t-buttons .small { width: 44px; height: 44px; font-size: 15px; }
+.t-buttons [data-t="jump"] { grid-area: jump; }
+.t-buttons [data-t="interact"] { grid-area: interact; }
+.t-buttons [data-t="blue"] { grid-area: blue; border: 5px solid var(--portal-a); }
+.t-buttons [data-t="orange"] { grid-area: orange; border: 5px solid var(--portal-b); }
+.t-buttons [data-t="hint"] { grid-area: hint; }
+.t-buttons [data-t="recall"] { grid-area: recall; }
+.t-buttons [data-t="pause"] { grid-area: pause; }
+.t-buttons [data-t="photo"] { grid-area: photo; }
+.t-buttons [data-t="flashlight"] { grid-area: flash; }
+#touch:not(.gun) [data-t="blue"], #touch:not(.gun) [data-t="orange"], #touch:not(.flash) [data-t="flashlight"] { visibility: hidden; }
+.t-keypad {
+  position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: grid; grid-template-columns: repeat(6, 48px); gap: 6px; padding: 8px; background: var(--panel); border-radius: 12px;
+}
+.t-keypad button { height: 44px; padding: 0; font: 700 18px var(--mono); }
+body.touch #prompt { top: calc(50% + 40px); }
+body.touch #objectives { max-width: 42vw; }
+#rotate { display: none; }
+@media (orientation: portrait) {
+  body.touch:not(.menu-open) #rotate {
+    display: flex; position: fixed; inset: 0; z-index: 50; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(5, 7, 10, 0.92); font-size: 16px; text-align: center; padding: 24px;
+  }
+  #rotate b { font-size: 48px; }
+}
+/* Phones: WREN talks from the top so the buttons stay reachable. */
+body.touch:not(.menu-open) #wren-box { bottom: auto; top: 8px; transform: translate(-50%, -16px); width: min(520px, 56vw); zoom: 0.85; }
+body.touch:not(.menu-open) #wren-box.show { transform: translate(-50%, 0); }
+body.touch #timer { top: 8px; }

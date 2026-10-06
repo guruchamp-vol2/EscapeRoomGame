@@ -16,15 +16,23 @@ import { makeRng } from './random.js';
 import { Wren } from './wren/wren.js';
 import { LINES } from './wren/lines.js';
 import { Progress, NOTES, levelUnlocked, continueId } from './progress.js';
+import { Music, moodFor } from './music.js';
+import { GamepadInput, PAD, ACTIONS, RESERVED, actionFor, canonFor, keyLabel, defaultBindings } from './controls.js';
+import { a11y } from './a11y.js';
+import { TouchControls, isTouchDevice } from './touch.js';
 
 // ---------- engine ----------
 const settings = loadSettings();
+// First run on a phone: lighter graphics, bigger interface.
+try {
+  if (isTouchDevice() && !localStorage.getItem('perspective-lab:settings')) Object.assign(settings, { highQuality: false, uiScale: 0.9, fov: 80 });
+} catch { /* storage blocked */ }
 const params = new URLSearchParams(location.search);
 // ?debug lets automated tests drive the game without pointer lock.
 const DEBUG = params.has('debug');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice() ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = settings.highQuality;
@@ -41,6 +49,51 @@ const player = new Player(camera);
 const grabber = new Grabber();
 const sfx = new Sfx();
 sfx.setVolume(settings.volume);
+const music = new Music(sfx);
+music.setVolume(settings.musicVolume);
+const gamepad = new GamepadInput();
+// Phones and tablets get on-screen controls (see touch.js).
+const touch = new TouchControls({
+  onLook: (dx, dy) => {
+    if (!locked) return;
+    lastActive = performance.now();
+    const k = settings.sensitivity * 1.7;
+    if (photo) photoLook(dx, dy, k);
+    else player.look(dx, dy, k, settings.invertY);
+  },
+  onAction: (id) => {
+    if (!locked) return;
+    lastActive = performance.now();
+    if (photo) {
+      if (id === 'photo' || id === 'pause') exitPhoto();
+      else if (id === 'interact' || id === 'blue') photo.snap = true;
+      return;
+    }
+    switch (id) {
+      case 'jump': player.queueJump(); break;
+      case 'interact': interact(); break;
+      case 'blue': fire(game.blue); break;
+      case 'orange': fire(game.orange); break;
+      case 'hint': hint(); break;
+      case 'recall': recallCubes(); break;
+      case 'flashlight': toggleFlashlight(); break;
+      case 'photo': enterPhoto(); break;
+      case 'pause': onLockChange(false); break;
+    }
+  },
+  onDigit: (d) => {
+    if (locked && aim?.kind === 'keypad') keypadInput(aim.obj.userData.keypad, d);
+  },
+});
+a11y.colorblind = settings.colorblind;
+
+// Interface size and crosshair size are CSS variables.
+function applyDisplay() {
+  const root = document.documentElement.style;
+  root.setProperty('--ui-scale', settings.uiScale);
+  root.setProperty('--ch-scale', settings.crosshairSize);
+}
+applyDisplay();
 
 // WREN, the museum's caretaker drone.
 const wren = new Wren({ sfx, enabled: settings.wren });
@@ -67,6 +120,22 @@ const ui = new UI({
   onReset: (password) => account.resetPassword(resetToken, password),
   onEmail: (email) => account.setEmail(email),
   onBoard: loadBoard,
+  onBind: (action, code) => {
+    const b = { ...settings.bindings };
+    if (!action) {
+      Object.assign(b, defaultBindings());
+    } else if (RESERVED.has(code)) {
+      ui.toast(`${keyLabel(code)} is reserved (pause and keypad digits).`, { type: 'warn', ms: 2500 });
+    } else {
+      // A key already in use swaps places with the one being rebound.
+      const clash = ACTIONS.find((a) => a.id !== action && b[a.id] === code);
+      if (clash) b[clash.id] = b[action];
+      b[action] = code;
+    }
+    settings.bindings = b;
+    saveSettings(settings);
+    ui.renderBinds(b);
+  },
   onShop: (op, slot, id) => {
     const ok = op === 'buy' ? progress.buy(slot, id) : progress.equip(slot, id);
     if (ok) {
@@ -80,6 +149,7 @@ const ui = new UI({
   },
 });
 ui.loadSettings(settings);
+ui.renderBinds(settings.bindings);
 
 // Long-term progress (stars, Fragments, Workshop, quests, notes).
 const progress = new Progress({ onChange: () => { renderMenu(); scheduleSync(); } });
@@ -159,6 +229,12 @@ function onSetting(name, value) {
     camera.updateProjectionMatrix();
   } else if (name === 'volume') {
     sfx.setVolume(value);
+  } else if (name === 'musicVolume') {
+    music.setVolume(value);
+  } else if (name === 'uiScale' || name === 'crosshairSize') {
+    applyDisplay();
+  } else if (name === 'colorblind') {
+    a11y.colorblind = value;
   } else if (name === 'wren') {
     wren.enabled = value;
     if (!value) wren.clear();
@@ -172,6 +248,7 @@ function onSetting(name, value) {
 
 function onAction(action) {
   sfx.unlock();
+  music.muffle(!!game?.started && !game.escaped);
   sfx.play('ui');
   switch (action) {
     case 'continue': play(continueId(progress)); break;
@@ -191,7 +268,9 @@ function onAction(action) {
       if (ui.returnTo === 'win' && game) ui.openBoard(game.id, game.daily ? 'daily' : 'all');
       loadBoard(ui.boardLevel, ui.boardKind);
       break;
-    case 'profile': ui.renderProfile(account); break;
+    case 'profile': ui.renderProfile(account, progress); break;
+    case 'controls': ui.setPadStatus(gamepad.pad?.id); break;
+    case 'share': shareResult(); break;
     case 'workshop': ui.renderWorkshop(progress); break;
     case 'journal': ui.renderJournal(progress); break;
     case 'auth': ui.setAuthMode('login'); break;
@@ -200,7 +279,8 @@ function onAction(action) {
 }
 
 function requestLock() {
-  if (DEBUG) {
+  if (DEBUG || gamepad.active || touch.enabled) {
+    if (touch.enabled && !DEBUG && !document.fullscreenElement) document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});
     onLockChange(true);
     return;
   }
@@ -257,6 +337,8 @@ function loadLevel(id, daily = false) {
   const level = buildLevel(def, b, ctx);
   flags.hasGun = level.hasGun;
   post.setBloom(theme.bloom ?? 0.5);
+  music.setMood(moodFor(def.world, { story: def.story, blackout: def.plan?.twists?.includes('blackout') }));
+  music.setIntensity(0);
   renderer.toneMappingExposure = theme.exposure ?? 1.05;
 
   const [colA, colB] = progress.equipped('portal').colors;
@@ -304,28 +386,50 @@ function loadLevel(id, daily = false) {
 }
 
 function play(id, daily = false) {
+  if (photo) exitPhoto();
   loadLevel(id, daily);
-  requestLock();
+  ui.fadeIn();
+  // Restarting mid-run keeps the lock, so no lock event will start the level.
+  if (locked) {
+    ui.hideMenu();
+    startGame();
+  } else {
+    requestLock();
+  }
+}
+
+function startGame() {
+  if (game.started) return;
+  game.started = true;
+  music.setIntensity(1);
+  account.startRun(game.id, game.daily);
+  ui.chapter(game.def, game.daily);
+  const g = game;
+  setTimeout(() => introLine(g), 1400);
 }
 
 function onLockChange(isLocked) {
   locked = isLocked;
   keys.clear();
+  holdRestart = -1;
+  ui.holdRing(0);
+  sprintToggled = false;
+  touch.setActive(locked);
   if (locked) {
     ui.hideMenu();
-    if (!game.started) {
-      game.started = true;
-      account.startRun(game.id, game.daily);
-      ui.chapter(game.def, game.daily);
-      setTimeout(() => introLine(game), 1400);
-    }
+    music.muffle(false);
+    startGame();
     return;
   }
+  if (photo) exitPhoto();
+  player.moveInput = null;
+  if (game?.started) progress.save();
   if (grabber.held) {
     grabber.drop();
     sfx.stopHeld();
   }
   if (game?.started && !game.escaped) {
+    music.muffle(true);
     const step = game.level.steps[game.level.stage()];
     ui.setPauseInfo(game.def.name, step.label, game.elapsed);
     ui.show('pause');
@@ -353,6 +457,7 @@ function keypadInput(kp, key) {
   sfx.play('beep');
 
   if (kp.entered.length === kp.code.length) {
+    progress.stat('codes');
     if (kp.entered === kp.code) {
       kp.solved = true;
       sfx.play('unlock');
@@ -362,6 +467,8 @@ function keypadInput(kp, key) {
     } else {
       kp.draw('ERR', '#ff4b4b');
       sfx.play('error');
+      shake(0.15);
+      gamepad.rumble(0.4, 0.2, 150);
       kp.flash = 0.8;
       wren.say(game.wrongCodes >= 2 ? 'wrong_code_many' : 'wrong_code', { chance: 0.6, cooldown: 8 });
       kp.entered = '';
@@ -397,6 +504,11 @@ function findInteract(o) {
 }
 
 // [key, text, locked] for what the player is looking at.
+// Key label for an action: the controller button when one is in use.
+const PAD_LABELS = { interact: 'X', hint: 'Y', recall: 'B', flashlight: 'RB', photo: 'View' };
+const TOUCH_LABELS = { interact: 'Use', hint: '?', recall: '⟲', flashlight: '🔦', photo: '📷' };
+const K = (action) => (gamepad.active ? PAD_LABELS[action] : touch.enabled ? TOUCH_LABELS[action] : keyLabel(settings.bindings[action]));
+
 function promptFor(a) {
   if (grabber.held) return ['E', 'Drop'];
   if (!a?.kind) return [null, ''];
@@ -407,7 +519,9 @@ function promptFor(a) {
     case 'keypad': {
       const kp = a.obj.userData.keypad;
       if (kp.solved) return [null, ''];
-      return kp.enabled() ? ['0-9', 'Type the code'] : [null, 'No signal.', true];
+      if (!kp.enabled()) return [null, 'No signal.', true];
+      if (touch.enabled && !gamepad.active) return [null, 'Tap the code on the keypad'];
+      return gamepad.active ? ['X', `Enter <b>${padDigit}</b> · D-pad ↑↓ changes it · B deletes`] : ['0-9', 'Type the code'];
     }
     case 'button': return near ? ['E', a.obj.userData.label ?? 'Press'] : [null, ''];
     default: return game.level.prompt?.(a.kind, a.distance, a.obj) ?? [null, ''];
@@ -418,8 +532,10 @@ function updateAim() {
   const hit = castFrom(game.b.solids, 3.5);
   const obj = hit && findInteract(hit.object);
   aim = hit ? { kind: obj?.userData.interact ?? null, obj, distance: hit.distance } : null;
-  const [key, text, lockedPrompt] = promptFor(aim);
+  let [key, text, lockedPrompt] = promptFor(aim);
+  if (key === 'E') key = K('interact');
   ui.setPrompt(key, text, lockedPrompt);
+  touch.setState({ gun: game.flags.hasGun, flashlight: game.level.flashlight, keypad: aim?.kind === 'keypad' && !aim.obj.userData.keypad.solved });
   ui.setCrosshair({
     hasGun: game.flags.hasGun, blue: game.blue.placed, orange: game.orange.placed, usable: !!key && !lockedPrompt,
   });
@@ -436,6 +552,8 @@ function interact() {
   switch (aim.kind) {
     case 'cube':
       grabber.grab(aim.obj.userData.cube, eye);
+      progress.stat('cubes');
+      gamepad.rumble(0.1, 0.3, 60);
       sfx.play('pickup');
       sfx.startHeld();
       break;
@@ -480,6 +598,9 @@ function fire(portal) {
   }
   portal.place(rec.point, rec.rotY, [rec.wall], rec);
   game.portalsFired++;
+  progress.stat('portals');
+  ui.crosshairPulse();
+  gamepad.rumble(0.2, 0.5, 90);
   progress.event('portal');
   sfx.play('portalOpen');
   refreshHud();
@@ -487,6 +608,7 @@ function fire(portal) {
 
 function hint() {
   const step = game.level.stage();
+  if (!game.hinted.has(step)) progress.stat('hints');
   game.hinted.add(step);
   sfx.play('hint');
   const text = game.level.steps[step].hint;
@@ -513,32 +635,97 @@ document.addEventListener('pointerlockchange', () => {
   onLockChange(document.pointerLockElement === renderer.domElement);
 });
 
+let sprintToggled = false;
+let holdRestart = -1; // seconds the restart key has been held; -1 = not held
+const HOLD_RESTART = 0.7;
+
 document.addEventListener('keydown', (e) => {
   if (!locked) return;
-  if (e.code === 'Space') e.preventDefault();
-  keys.add(e.code);
+  if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
+  // Controller players have no pointer lock, so Esc pauses by hand.
+  if (e.code === 'Escape' && !document.pointerLockElement && !DEBUG) {
+    onLockChange(false);
+    return;
+  }
+  const action = actionFor(e.code, settings.bindings);
+  const canon = canonFor(action);
+  if (canon) {
+    if (action === 'sprint' && settings.toggleSprint && !photo) {
+      if (!e.repeat) sprintToggled = !sprintToggled;
+    } else {
+      keys.add(canon);
+    }
+    if (action === 'jump' && !e.repeat && !photo) player.queueJump();
+  }
   if (e.repeat) return;
-  if (e.code === 'KeyE') interact();
-  else if (e.code === 'KeyH') hint();
-  else if (e.code === 'KeyR') recallCubes();
-  else if (e.code === 'KeyF' && game.level.flashlight) flashlight.intensity = flashlight.intensity > 0 ? 0 : 60;
-  else if (aim?.kind === 'keypad' && (e.key === 'Backspace' || /^[0-9]$/.test(e.key))) {
+  if (photo) {
+    if (action === 'photo') exitPhoto();
+    else if (e.code === 'KeyG') { photo.grid = !photo.grid; ui.photoMode(true, photo.grid); }
+    else if (e.code === 'BracketLeft') photo.roll += 0.05;
+    else if (e.code === 'BracketRight') photo.roll -= 0.05;
+    return;
+  }
+  if (aim?.kind === 'keypad' && (e.key === 'Backspace' || /^[0-9]$/.test(e.key))) {
     keypadInput(aim.obj.userData.keypad, e.key);
+    return;
+  }
+  switch (action) {
+    case 'interact': interact(); break;
+    case 'hint': hint(); break;
+    case 'recall': recallCubes(); break;
+    case 'flashlight': toggleFlashlight(); break;
+    case 'photo': enterPhoto(); break;
+    case 'restart': holdRestart = 0; break;
   }
 });
-document.addEventListener('keyup', (e) => keys.delete(e.code));
-document.addEventListener('keydown', () => (lastActive = performance.now()));
-document.addEventListener('mousemove', (e) => {
-  if (locked) {
-    player.look(e.movementX, e.movementY, settings.sensitivity, settings.invertY);
-    lastActive = performance.now();
+document.addEventListener('keyup', (e) => {
+  const action = actionFor(e.code, settings.bindings);
+  const canon = canonFor(action);
+  if (canon) keys.delete(canon);
+  keys.delete(e.code);
+  if (action === 'restart') {
+    holdRestart = -1;
+    ui.holdRing(0);
   }
+});
+window.addEventListener('blur', () => {
+  if (locked && !document.pointerLockElement && !DEBUG) onLockChange(false);
+});
+
+function toggleFlashlight() {
+  if (game.level.flashlight) flashlight.intensity = flashlight.intensity > 0 ? 0 : 60;
+}
+
+// Keys the simulation sees this frame: keyboard + controller + toggled sprint.
+const padKeys = new Set();
+function frameKeys() {
+  if (!padKeys.size && !sprintToggled && !touch.keys.size) return keys;
+  const all = new Set(keys);
+  for (const k of padKeys) all.add(k);
+  for (const k of touch.keys) all.add(k);
+  if (sprintToggled) all.add('ShiftLeft');
+  return all;
+}
+document.addEventListener('keydown', () => (lastActive = performance.now()));
+const mouseLive = () => locked && (DEBUG || !!document.pointerLockElement);
+document.addEventListener('mousemove', (e) => {
+  if (!mouseLive()) return;
+  lastActive = performance.now();
+  if (photo) photoLook(e.movementX, e.movementY, settings.sensitivity);
+  else player.look(e.movementX, e.movementY, settings.sensitivity, settings.invertY);
 });
 document.addEventListener('mousedown', (e) => {
-  if (!locked) return;
+  if (!mouseLive()) return;
+  if (photo) {
+    if (e.button === 0) photo.snap = true;
+    return;
+  }
   if (e.button === 0) fire(game.blue);
   else if (e.button === 2) fire(game.orange);
 });
+document.addEventListener('wheel', (e) => {
+  if (photo) photo.fov = Math.min(110, Math.max(15, photo.fov + Math.sign(e.deltaY) * 3));
+}, { passive: true });
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function resize() {
@@ -557,10 +744,38 @@ const tmp = new THREE.Vector3();
 const prevEye = new THREE.Vector3();
 let stepDistance = 0;
 
+// Screen shake ("trauma", squared so small knocks stay subtle) and FOV kicks.
+const feel = { trauma: 0, fovKick: 0, t: 0 };
+function shake(amount) {
+  if (!settings.reduceMotion) feel.trauma = Math.min(1, feel.trauma + amount);
+}
+function applyFeel(dt) {
+  feel.t += dt;
+  feel.fovKick *= Math.exp(-dt * 5);
+  if (feel.trauma <= 0) return;
+  const k = feel.trauma * feel.trauma, t = feel.t * 30;
+  camera.rotation.x += Math.sin(t * 1.3) * 0.035 * k;
+  camera.rotation.y += Math.sin(t * 1.7 + 2) * 0.035 * k;
+  camera.rotation.z += Math.sin(t * 2.1 + 4) * 0.05 * k;
+  camera.updateMatrixWorld();
+  feel.trauma = Math.max(0, feel.trauma - dt * 1.8);
+}
+sfx.onPlay = (name) => {
+  if (name === 'door') { shake(0.18); gamepad.rumble(0.3, 0.1, 400); }
+};
+
 function playerFeedback(dt) {
-  if (player.jumped) sfx.play('jump');
+  if (player.jumped) {
+    sfx.play('jump');
+    progress.stat('jumps');
+  }
   if (player.landImpact > 5) sfx.play('land');
+  if (player.landImpact > 10) {
+    shake(Math.min(0.45, (player.landImpact - 10) * 0.04 + 0.15));
+    gamepad.rumble(0.5, 0.3, 120);
+  }
   const speed = Math.hypot(player.vel.x, player.vel.z);
+  if (player.onGround && speed > 0.8) progress.stat('distance', speed * dt);
   if (player.onGround && speed > 0.8) {
     stepDistance += speed * dt;
     if (stepDistance > 2.0) {
@@ -570,7 +785,7 @@ function playerFeedback(dt) {
   }
   // Sprint widens the view a little.
   const sprinting = speed > 5 && player.onGround;
-  const targetFov = settings.fov + (sprinting ? 6 : 0);
+  const targetFov = settings.fov + (sprinting && !settings.reduceMotion ? 6 : 0) + feel.fovKick;
   if (Math.abs(camera.fov - targetFov) > 0.05) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
     camera.updateProjectionMatrix();
@@ -592,15 +807,35 @@ function update(dt) {
   }
   if (!locked || game.escaped) return;
   game.elapsed += dt;
+  progress.stat('playMs', dt * 1000);
+  if (photo) {
+    updatePhoto(dt);
+    return;
+  }
+  if (holdRestart >= 0) {
+    holdRestart += dt;
+    ui.holdRing(Math.min(1, holdRestart / HOLD_RESTART));
+    if (holdRestart >= HOLD_RESTART) {
+      holdRestart = -1;
+      ui.holdRing(0);
+      play(game.id, game.daily);
+      return;
+    }
+  }
 
   player.eye(prevEye);
   const ignore = game.portals.ignoreSet(player.center(tmp));
-  player.update(dt, keys, game.b.colliders, ignore);
+  const input = frameKeys();
+  if (sprintToggled && !['KeyW', 'KeyA', 'KeyS', 'KeyD'].some((k) => input.has(k)) && !player.moveInput) sprintToggled = false;
+  player.update(dt, input, game.b.colliders, ignore);
   const through = game.portals.checkTeleport(player, prevEye, player.eye(tmp));
   if (through) {
     game.teleports++;
     progress.event('teleport');
+    progress.stat('teleports');
     sfx.play('teleport');
+    if (!settings.reduceMotion) feel.fovKick = 9;
+    gamepad.rumble(0.15, 0.4, 100);
     if (through === game.blue || through === game.orange) {
       account.unlock('thinking');
       if (!seenPortal) {
@@ -612,11 +847,14 @@ function update(dt) {
     if (game.teleports >= 20) account.unlock('frequent_flyer');
     game.level.onTeleport?.(through);
   }
-  player.applyCamera(dt, settings.headBob ? 1 : 0);
+  player.applyCamera(dt, settings.headBob && !settings.reduceMotion ? 1 : 0);
+  applyFeel(dt);
   playerFeedback(dt);
 
   if (player.pos.y < -20 || game.level.fellOut?.(player)) {
     respawnPlayer();
+    progress.stat('falls');
+    gamepad.rumble(0.6, 0.6, 200);
     if (!wren.say('fell', { priority: 2, cooldown: 4 })) ui.toast('Whoops. Back to the start.', { type: 'warn' });
   }
 
@@ -643,7 +881,11 @@ function update(dt) {
     if (c.held) continue;
     const vy = c.vy;
     Grabber.simulate(c, dt, game.b.colliders);
-    if (vy < -3 && c.vy === 0) sfx.play('thud');
+    if (vy < -3 && c.vy === 0) {
+      sfx.play('thud');
+      const near = c.mesh.position.distanceTo(player.pos);
+      if (near < 8) shake(Math.min(0.3, c.size * 0.05) * (1 - near / 8));
+    }
     if (c.mesh.position.y < -20) c.resetHome();
   }
 
@@ -651,6 +893,12 @@ function update(dt) {
   const stage = game.level.stage();
   while (game.splits.length < stage) recordSplit(game.splits.length);
   if (stage !== game.lastStage) {
+    if (game.lastStage !== undefined && stage > game.lastStage) {
+      ui.flash('good');
+      music.stinger();
+      gamepad.rumble(0.2, 0.2, 80);
+    }
+    music.setIntensity(stage / Math.max(1, game.level.steps.length - 1) >= 0.6 ? 2 : 1);
     if (game.lastStage !== undefined && stage > game.lastStage && stage < game.level.steps.length - 1) wren.say('solved', { chance: 0.45, cooldown: 10 });
     game.lastStage = stage;
     refreshHud();
@@ -661,6 +909,7 @@ function update(dt) {
     lastActive = performance.now();
     wren.say('idle', { cooldown: 90 });
   }
+  checkLifetime();
   game.recorder.sample(game.elapsed, player);
   game.ghost?.update(game.elapsed, camera.position);
   updateAim();
@@ -693,6 +942,7 @@ function respawnPlayer() {
   const sp = game.level.respawn?.() ?? game.level.spawn;
   player.spawn(sp.pos, sp.yaw);
   player.applyCamera();
+  ui.flash('warn');
   ui.fade(() => {});
 }
 
@@ -771,6 +1021,9 @@ function complete() {
   const newAchievements = ACHIEVEMENTS.filter((a) => account.achievements.has(a.key) && !before.has(a.key));
   outroLine(g, { levels, hints, timeMs });
   const reward = progress.complete(g.def, { timeMs, hints, daily: g.daily });
+  g.result = { timeMs, hints, stars: reward.stars };
+  music.stinger(true);
+  music.setIntensity(0);
   for (const q of reward.quests) ui.toast(`Quest complete: ${q.text} (+${q.reward} ◆)`, { type: 'success', ms: 5000 });
   if (reward.stars === 3 && reward.gained) wren.say('stars_three', { chance: 0.5, cooldown: 30 });
 
@@ -820,6 +1073,209 @@ function complete() {
   });
 }
 
+// ---------- photo mode ----------
+let photo = null;
+const PHOTO_RANGE = 7; // metres the camera may drift from the player: no scouting
+
+function enterPhoto() {
+  if (!game?.started || game.escaped || photo) return;
+  if (grabber.held) {
+    grabber.drop();
+    sfx.stopHeld();
+  }
+  photo = {
+    pos: camera.position.clone(), origin: camera.position.clone(),
+    yaw: player.yaw, pitch: player.pitch, roll: 0, fov: camera.fov, grid: false, snap: false,
+  };
+  keys.clear();
+  viewmodel.visible = false;
+  wren.clear();
+  ui.photoMode(true);
+  sfx.play('ui');
+}
+
+function exitPhoto() {
+  if (!photo) return;
+  photo = null;
+  keys.clear();
+  viewmodel.visible = game.flags.hasGun;
+  camera.fov = settings.fov;
+  camera.updateProjectionMatrix();
+  player.applyCamera();
+  ui.photoMode(false);
+}
+
+function photoLook(dx, dy, sens) {
+  photo.yaw -= dx * 0.0022 * sens;
+  photo.pitch = Math.max(-1.55, Math.min(1.55, photo.pitch - (settings.invertY ? -dy : dy) * 0.0022 * sens));
+}
+
+const photoDir = new THREE.Vector3();
+function updatePhoto(dt) {
+  const input = frameKeys();
+  const f = new THREE.Vector3(-Math.sin(photo.yaw) * Math.cos(photo.pitch), Math.sin(photo.pitch), -Math.cos(photo.yaw) * Math.cos(photo.pitch));
+  const r = new THREE.Vector3(Math.cos(photo.yaw), 0, -Math.sin(photo.yaw));
+  photoDir.set(0, 0, 0);
+  if (input.has('KeyW')) photoDir.add(f);
+  if (input.has('KeyS')) photoDir.sub(f);
+  if (input.has('KeyD')) photoDir.add(r);
+  if (input.has('KeyA')) photoDir.sub(r);
+  if (input.has('Space')) photoDir.y += 1;
+  if (input.has('ShiftLeft')) photoDir.y -= 1;
+  if (player.moveInput) photoDir.addScaledVector(f, -player.moveInput.y).addScaledVector(r, player.moveInput.x);
+  if (photoDir.lengthSq() > 0) photo.pos.addScaledVector(photoDir.normalize(), dt * 3);
+  const off = photo.pos.clone().sub(photo.origin);
+  if (off.length() > PHOTO_RANGE) photo.pos.copy(photo.origin).addScaledVector(off.normalize(), PHOTO_RANGE);
+  camera.position.copy(photo.pos);
+  camera.rotation.set(photo.pitch, photo.yaw, photo.roll, 'YXZ');
+  if (Math.abs(camera.fov - photo.fov) > 0.01) {
+    camera.fov += (photo.fov - camera.fov) * Math.min(1, dt * 10);
+    camera.updateProjectionMatrix();
+  }
+  camera.updateMatrixWorld();
+}
+
+// Called right after a frame is drawn, while the canvas still holds it.
+function savePhoto() {
+  photo.snap = false;
+  const name = `perspective-lab-${game.def.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${Date.now()}.png`;
+  renderer.domElement.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/png');
+  ui.flash('snap');
+  sfx.play('pickup');
+  progress.stat('photos');
+  account.unlock('shutterbug');
+}
+
+// ---------- controller ----------
+let padDigit = 0;
+let padSeen = null;
+let padNav = { dir: 0, t: 0 };
+let padSprint = false;
+
+function handlePad(dt) {
+  const p = gamepad.poll();
+  if (!p || !gamepad.active) {
+    player.moveInput = touch.move;
+    padKeys.clear();
+    if (!p) return;
+  }
+  if (padSeen !== gamepad.pad.id) {
+    padSeen = gamepad.pad.id;
+    ui.setPadStatus(padSeen);
+  }
+  if (gamepad.active) lastActive = performance.now();
+
+  if (!locked) {
+    player.moveInput = null;
+    padKeys.clear();
+    if (!ui.menuOpen) return;
+    // Menu navigation with key-repeat on the D-pad / stick.
+    const dir = p.held(PAD.UP) || p.move.y < -0.6 ? -1 : p.held(PAD.DOWN) || p.move.y > 0.6 ? 1 : 0;
+    const side = p.held(PAD.LEFT) || p.move.x < -0.6 ? -1 : p.held(PAD.RIGHT) || p.move.x > 0.6 ? 1 : 0;
+    if (dir || side) {
+      padNav.t -= dt;
+      if (padNav.dir !== dir + side * 3 || padNav.t <= 0) {
+        if (side && ui.padAdjust(side)) { /* slider moved */ } else if (dir || side) ui.padNavigate(dir || side);
+        padNav.t = padNav.dir === dir + side * 3 ? 0.12 : 0.4;
+        padNav.dir = dir + side * 3;
+      }
+    } else {
+      padNav = { dir: 0, t: 0 };
+    }
+    if (p.pressed(PAD.A)) { sfx.unlock(); ui.padActivate(); }
+    if (p.pressed(PAD.B)) {
+      if (ui.screen === 'pause') onAction('resume');
+      else ui.padBack();
+    }
+    if (p.pressed(PAD.START)) {
+      sfx.unlock();
+      if (ui.screen === 'pause') onAction('resume');
+      else if (ui.screen === 'main') document.querySelector('#continue-btn').click();
+    }
+    return;
+  }
+
+  if (p.pressed(PAD.START)) {
+    if (document.pointerLockElement) document.exitPointerLock();
+    else onLockChange(false);
+    return;
+  }
+  const sens = 1500 * dt * settings.padSensitivity;
+  const curve = (v) => Math.sign(v) * Math.abs(v) ** 1.7;
+  if (photo) {
+    photoLook(curve(p.look.x) * sens, curve(p.look.y) * sens, 1);
+    player.moveInput = p.move.m ? { x: p.move.x, y: p.move.y } : null;
+    padKeys.clear();
+    if (p.held(PAD.A)) padKeys.add('Space');
+    if (p.held(PAD.B)) padKeys.add('ShiftLeft');
+    if (p.pressed(PAD.X)) photo.snap = true;
+    if (p.pressed(PAD.BACK)) exitPhoto();
+    if (p.held(PAD.RT)) photo.fov = Math.max(15, photo.fov - dt * 30);
+    if (p.held(PAD.LT)) photo.fov = Math.min(110, photo.fov + dt * 30);
+    return;
+  }
+  if (p.look.m) player.look(curve(p.look.x) * sens, curve(p.look.y) * sens, 1, settings.invertY);
+  player.moveInput = p.move.m ? { x: p.move.x, y: p.move.y } : touch.move;
+  if (p.pressed(PAD.L3)) padSprint = !padSprint;
+  if (!p.move.m) padSprint = false;
+  padKeys.clear();
+  if (p.held(PAD.A)) padKeys.add('Space');
+  if (p.held(PAD.LB) || padSprint) padKeys.add('ShiftLeft');
+  if (p.pressed(PAD.A)) player.queueJump();
+
+  const kp = aim?.kind === 'keypad' ? aim.obj.userData.keypad : null;
+  if (kp && p.pressed(PAD.UP)) padDigit = (padDigit + 1) % 10;
+  if (kp && p.pressed(PAD.DOWN)) padDigit = (padDigit + 9) % 10;
+  if (p.pressed(PAD.X)) {
+    if (kp) keypadInput(kp, String(padDigit));
+    else interact();
+  }
+  if (p.pressed(PAD.B)) {
+    if (kp) keypadInput(kp, 'Backspace');
+    else recallCubes();
+  }
+  if (p.pressed(PAD.RT)) fire(game.blue);
+  if (p.pressed(PAD.LT)) fire(game.orange);
+  if (p.pressed(PAD.Y)) hint();
+  if (p.pressed(PAD.RB)) toggleFlashlight();
+  if (p.pressed(PAD.BACK)) enterPhoto();
+}
+
+// ---------- sharing & lifetime milestones ----------
+async function shareResult() {
+  const g = game;
+  if (!g?.result) return;
+  const { timeMs, hints, stars } = g.result;
+  const title = g.daily ? `Daily challenge ${account.today}` : `${g.def.story ? 'Chamber' : 'Level'} ${g.def.number} · ${g.def.name}`;
+  const text = `Perspective Lab · ${title}\n${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ${formatMs(timeMs)}  ${hints ? `${hints} hint${hints > 1 ? 's' : ''}` : 'no hints'}\nCan you beat it? ${location.origin}`;
+  try {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ text });
+    else {
+      await navigator.clipboard.writeText(text);
+      ui.toast('Result copied. Paste it anywhere.', { type: 'success', ms: 2500 });
+    }
+  } catch {
+    ui.toast(text, { type: 'info', ms: 8000 });
+  }
+}
+
+let lifetimeCheck = 0;
+function checkLifetime() {
+  if ((lifetimeCheck += 1) % 120) return; // every ~2 s of play
+  const st = progress.data.stats;
+  if ((st.jumps ?? 0) >= 1000) account.unlock('bunny_hop');
+  if ((st.playMs ?? 0) >= 3 * 3600_000) account.unlock('marathon');
+  if ((st.distance ?? 0) >= 10_000) account.unlock('globetrotter');
+  if (lifetimeCheck % 3600 === 0) progress.save(); // ~once a minute
+}
+
 // ---------- loop ----------
 loadLevel(DEBUG ? (params.get('level') ?? 'scale') : account.nextLevel);
 if (DEBUG) {
@@ -844,6 +1300,7 @@ renderer.setAnimationLoop((time) => {
   // The first delta can be negative (rAF timestamps vs. performance.now), and a
   // negative step runs physics backwards — clamp it.
   const dt = Math.min(Math.max(timer.getDelta(), 0), 1 / 30);
+  handlePad(dt);
   if (!manualStep) update(dt);
   if (renderOff) return;
   wren.update(dt, camera);
@@ -851,13 +1308,15 @@ renderer.setAnimationLoop((time) => {
   game.portals.render(renderer, game.scene, camera, [viewmodel]);
   if (settings.highQuality) post.render();
   else renderer.render(game.scene, camera);
+  if (photo?.snap) savePhoto();
 });
 
 // Handy for debugging and scripted tests.
 window.__game = {
   get game() { return game; },
   player, keys, grabber, ui, account, settings,
-  interact, fire: (color) => fire(game[color]), update, play, loadLevel,
+  interact, fire: (color) => fire(game[color]), update, play, loadLevel, music, progress,
+  enterPhoto, exitPhoto, get photo() { return photo; },
   typeCode: (code) => { for (const d of code) if (aim?.kind === 'keypad') keypadInput(aim.obj.userData.keypad, d); },
   get aim() { return aim; },
   wren,

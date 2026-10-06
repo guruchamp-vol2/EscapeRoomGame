@@ -2,6 +2,22 @@
 import { ACHIEVEMENTS } from './achievements.js';
 import { LEVELS, GROUPS } from './levels/meta.js';
 import { SHOP, NOTES, levelUnlocked, continueId } from './progress.js';
+import { ACTIONS, keyLabel } from './controls.js';
+
+const TIPS = [
+  'Hold the restart key (Q by default) to restart a level instantly.',
+  'A cube keeps its size on screen when you drop it. Look far away to make it huge.',
+  'Portals keep your momentum. Falling fast into one launches you out of the other.',
+  'Three stars need a quick run with no hints. Replays count.',
+  'Photo mode (P) pauses the action and lets you fly the camera a little.',
+  "Lost? H gives a hint for the current step. It only costs you a star.",
+  'R pulls every cube back to where it started.',
+  'Every world hides one of the curator\'s notes. Look in corners.',
+  'Daily quests reset at midnight UTC. Fragments buy hats for WREN.',
+  'You can jump a moment after running off a ledge. The museum is forgiving.',
+  'Plug in a controller at any time. Everything works with one.',
+  'Colour-blind tags put a letter on every colour-coded puzzle piece (Settings → Accessibility).',
+];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -12,7 +28,7 @@ const ICONS = {
 const ITEM_NAMES = { device: 'Portal device', keycard: 'Keycard' };
 
 // Screens reached from another screen; "Back" returns to where they were opened.
-const SUBSCREENS = new Set(['settings', 'controls', 'leaderboard', 'profile', 'auth', 'chambers', 'forgot', 'workshop', 'journal']);
+const SUBSCREENS = new Set(['settings', 'controls', 'leaderboard', 'profile', 'auth', 'chambers', 'forgot', 'workshop', 'journal', 'credits']);
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pad = (n) => String(n).padStart(2, '0');
@@ -67,6 +83,37 @@ export class UI {
       });
     }
     $('#race-ghost').addEventListener('change', (e) => handlers.onSetting('raceGhost', e.target.checked));
+
+    // Tabbed screens: a .tabs bar switches its section's [data-tab] panels.
+    for (const bar of ['#settings-tabs', '#controls-tabs']) {
+      $(bar).addEventListener('click', (e) => {
+        const t = e.target.closest('[data-tab]');
+        if (!t) return;
+        const section = t.closest('section');
+        for (const b of $(bar).children) b.classList.toggle('active', b === t);
+        for (const p of section.querySelectorAll(':scope > [data-tab]')) p.classList.toggle('hidden', p.dataset.tab !== t.dataset.tab);
+      });
+    }
+    if (document.body.classList.contains('touch') || matchMedia('(pointer: coarse)').matches) {
+      setTimeout(() => document.querySelector('#controls-tabs [data-tab="touch"]')?.click(), 0);
+    }
+    this.listening = null;
+    $('#binds').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bind]');
+      if (!b) return;
+      this.listening = b.dataset.bind;
+      this.renderBinds(this._bindings);
+    });
+    $('#binds-reset').addEventListener('click', () => handlers.onBind(null));
+    window.addEventListener('keydown', (e) => {
+      if (!this.listening) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const action = this.listening;
+      this.listening = null;
+      if (e.code !== 'Escape') handlers.onBind(action, e.code);
+      else this.renderBinds(this._bindings);
+    }, true);
 
     $('#auth-tabs').addEventListener('click', (e) => {
       const b = e.target.closest('[data-mode]');
@@ -162,6 +209,60 @@ export class UI {
     const focus = { auth: '#auth-form [name="username"]', forgot: '#forgot-form [name="login"]', reset: '#reset-form [name="password"]' }[screen];
     if (focus) setTimeout(() => $(focus)?.focus(), 50);
     if (screen === 'forgot') $('#forgot-ok').textContent = '';
+    if (screen === 'credits') {
+      const c = $('#credits');
+      c.classList.remove('roll');
+      void c.offsetWidth;
+      c.classList.add('roll');
+      this.menu.querySelector('.card').scrollTop = 0;
+    }
+    this._padFocus = null;
+  }
+
+  // ---------- controller navigation in menus ----------
+  _focusables() {
+    const section = this.menu.querySelector(`section[data-screen="${this.screen}"]`);
+    if (!section) return [];
+    return [...section.querySelectorAll('button, input, select, [data-level]')]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+  }
+
+  padNavigate(dir) {
+    const els = this._focusables();
+    if (!els.length) return;
+    let i = els.indexOf(document.activeElement);
+    if (i < 0) i = dir > 0 ? -1 : 0;
+    const next = els[(i + dir + els.length) % els.length];
+    next.focus();
+    next.scrollIntoView({ block: 'nearest' });
+    document.body.classList.add('pad-nav');
+  }
+
+  padAdjust(dir) {
+    const el = document.activeElement;
+    if (el?.type === 'range') {
+      const step = parseFloat(el.step) || 0.1;
+      el.value = Math.min(parseFloat(el.max), Math.max(parseFloat(el.min), parseFloat(el.value) + dir * step));
+      el.dispatchEvent(new Event('input'));
+      return true;
+    }
+    return false;
+  }
+
+  padActivate() {
+    const el = document.activeElement;
+    if (el && this.menu.contains(el) && el !== document.body) {
+      if (el.type === 'checkbox') { el.checked = !el.checked; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); }
+      else el.click();
+      return;
+    }
+    this.padNavigate(1);
+  }
+
+  padBack() {
+    const back = this.menu.querySelector(`section[data-screen="${this.screen}"] [data-action="back"]`);
+    if (back) back.click();
+    return !!back;
   }
 
   hideMenu() {
@@ -175,6 +276,7 @@ export class UI {
   }
 
   setPauseInfo(levelName, objective, elapsed) {
+    $('#pause-tip').textContent = `Tip: ${TIPS[Math.floor(Math.random() * TIPS.length)]}`;
     $('#pause-chamber').textContent = `Paused · ${levelName}`;
     $('#pause-objective').textContent = objective;
     $('#pause-time').textContent = `Time so far: ${formatTime(elapsed)}`;
@@ -354,7 +456,7 @@ export class UI {
   }
 
   // ---------- profile ----------
-  renderProfile(account) {
+  renderProfile(account, progress) {
     const user = account.user;
     const unlocked = account.achievements;
     const levels = account.levels;
@@ -382,6 +484,17 @@ export class UI {
       const done = g.levels.filter((l) => levels[l.id]).length;
       return `<tr><td>${esc(g.name)}</td><td>${done} / ${g.levels.length}</td></tr>`;
     }).join('');
+    const st = progress?.data.stats ?? {};
+    const hours = (st.playMs ?? 0) / 3600000;
+    const life = [
+      ['Time played', hours >= 1 ? `${hours.toFixed(1)} h` : `${Math.round(hours * 60)} min`],
+      ['Distance walked', `${((st.distance ?? 0) / 1000).toFixed(2)} km`],
+      ['Jumps', st.jumps ?? 0], ['Portals fired', st.portals ?? 0],
+      ['Teleports', st.teleports ?? 0], ['Cubes carried', st.cubes ?? 0],
+      ['Falls', st.falls ?? 0], ['Hints used', st.hints ?? 0],
+      ['Codes entered', st.codes ?? 0], ['Photos taken', st.photos ?? 0],
+    ];
+    $('#profile-life').innerHTML = life.map(([k, v]) => stat(k, v)).join('');
     $('#ach-count').textContent = `Achievements ${unlocked.size} / ${ACHIEVEMENTS.length}`;
     $('#profile-achievements').innerHTML = ACHIEVEMENTS.map((a) => achievementHtml(a, unlocked.has(a.key))).join('');
   }
@@ -468,6 +581,7 @@ export class UI {
       $('#win-stars').innerHTML = '';
       $('#win-rewards').innerHTML = '';
     }
+    $('#credits-btn').classList.toggle('hidden', !final);
     const next = $('#next-btn');
     next.classList.toggle('hidden', !hasNext);
     next.disabled = !!nextLocked;
@@ -493,7 +607,7 @@ export class UI {
     const out = this.menu.querySelector(`output[data-for="${name}"]`);
     if (!out) return;
     if (name === 'fov') out.textContent = `${v}°`;
-    else if (name === 'volume') out.textContent = `${Math.round(v * 100)}%`;
+    else if (name === 'volume' || name === 'musicVolume') out.textContent = `${Math.round(v * 100)}%`;
     else out.textContent = `${Number(v).toFixed(2)}×`;
   }
 
@@ -558,6 +672,60 @@ export class UI {
 
   clearToasts() {
     this.toasts.innerHTML = '';
+  }
+
+  // ---------- controls ----------
+  renderBinds(bindings) {
+    this._bindings = bindings;
+    $('#binds').innerHTML = ACTIONS.map((a) => {
+      const listening = this.listening === a.id;
+      return `<tr><td><button class="bind ${listening ? 'listening' : ''}" data-bind="${a.id}">${listening ? 'Press a key…' : esc(keyLabel(bindings[a.id]))}</button></td><td>${esc(a.label)}</td></tr>`;
+    }).join('');
+    const k = (id) => `<kbd>${esc(keyLabel(bindings[id]))}</kbd>`;
+    $('#keyhints').innerHTML = `${k('hint')} Hint ${k('recall')} Recall cube ${k('photo')} Photo <kbd>Esc</kbd> Pause`;
+  }
+
+  setPadStatus(name) {
+    $('#pad-status').textContent = name ? `Connected: ${name.replace(/\s*\(.*\)\s*$/, '')}` : 'No controller detected. Plug one in and press any button.';
+  }
+
+  // Hold-to-restart progress ring (0 hides it).
+  holdRing(p) {
+    const el = $('#hold-ring');
+    el.classList.toggle('show', p > 0);
+    el.querySelector('circle').style.strokeDashoffset = String(100.5 * (1 - p));
+  }
+
+  // Edge glow: 'good' when a step is solved, 'warn' on a fall.
+  flash(kind = 'good') {
+    const el = $('#flash');
+    el.className = '';
+    void el.offsetWidth;
+    el.className = kind;
+  }
+
+  crosshairPulse() {
+    const el = $('#crosshair');
+    el.classList.remove('pulse');
+    void el.offsetWidth;
+    el.classList.add('pulse');
+  }
+
+  photoMode(on, grid = false) {
+    $('#photo-hud').classList.toggle('hidden', !on);
+    $('#photo-grid').classList.toggle('hidden', !on || !grid);
+    this.hud.classList.toggle('hidden', on);
+    document.body.classList.toggle('photo', on);
+  }
+
+  // Fade in from black (used when a level starts; the load happens behind it).
+  fadeIn() {
+    const el = $('#fade');
+    el.style.transition = 'none';
+    el.classList.add('on');
+    void el.offsetWidth;
+    el.style.transition = '';
+    requestAnimationFrame(() => el.classList.remove('on'));
   }
 
   // Fade to black, run `mid`, fade back.

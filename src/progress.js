@@ -89,7 +89,7 @@ function blank() {
     v: 1, stars: {}, fragments: 0, earned: 0,
     owned: ['portal:classic', 'cube:companion', 'hat:none'],
     equipped: { portal: 'classic', cube: 'companion', hat: 'none' },
-    streak: { count: 0, last: null }, quests: null, notes: [], updatedAt: 0,
+    streak: { count: 0, last: null }, quests: null, notes: [], stats: {}, updatedAt: 0,
   };
 }
 
@@ -125,6 +125,7 @@ export class Progress {
     for (const [id, s] of Object.entries(remote.stars ?? {})) d.stars[id] = Math.max(d.stars[id] ?? 0, s);
     d.owned = [...new Set([...d.owned, ...(remote.owned ?? [])])];
     d.notes = [...new Set([...d.notes, ...(remote.notes ?? [])])];
+    for (const [k, v] of Object.entries(remote.stats ?? {})) if (typeof v === 'number') d.stats[k] = Math.max(d.stats[k] ?? 0, v);
     if ((remote.updatedAt ?? 0) > d.updatedAt) {
       d.fragments = remote.fragments;
       d.earned = remote.earned;
@@ -135,6 +136,11 @@ export class Progress {
       d.earned = Math.max(d.earned, remote.earned ?? 0);
     }
     this.save();
+  }
+
+  // Lifetime counters (play time, distance, jumps…). Saved with the next save().
+  stat(name, n = 1) {
+    this.data.stats[name] = (this.data.stats[name] ?? 0) + n;
   }
 
   // ---------- stars, ranks, unlocks ----------

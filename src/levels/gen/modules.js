@@ -10,6 +10,7 @@
 //   }
 // Layout ranges are chosen so every module is solvable by construction (jump
 // height, forced-perspective ratios, lines of sight); the auto-solver checks it.
+import { a11y, colorLetter } from '../../a11y.js';
 import * as THREE from 'three';
 import { signTexture, codeCanvasTexture, floorMarkerTexture, dynamicTexture, tileTexture, patternTexture } from '../../textures.js';
 import { range, irange, pick, shuffle, randomCode } from '../../random.js';
@@ -20,6 +21,8 @@ const COLORS = [
   { name: 'yellow', hex: '#ffe23d' }, { name: 'magenta', hex: '#ff3df0' }, { name: 'cyan', hex: '#3dfcff' },
   { name: 'orange', hex: '#ff9a2e' }, { name: 'white', hex: '#ffffff' },
 ];
+for (const c of COLORS) a11y.letters[c.hex] = c.name[0].toUpperCase();
+a11y.letters['#3dff7a'] = '★'; // teleport maze exit
 const r1 = (v) => Math.round(v * 10) / 10;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -117,6 +120,12 @@ function circlesTexture(title, colors, numbered, subtitle) {
       g.fillStyle = '#0d1014';
       g.font = 'bold 44px system-ui, sans-serif';
       g.fillText(String(i + 1), x, 202);
+    }
+    const letter = colorLetter(c);
+    if (letter) {
+      g.fillStyle = '#e8eef2';
+      g.font = 'bold 34px system-ui, sans-serif';
+      g.fillText(letter, x, 275);
     }
   });
   if (subtitle) {
@@ -691,6 +700,8 @@ export const MODULE_IMPL = {
           const orb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 14), mat);
           orb.position.set(p.x, p.y, p.z);
           b.scene.add(orb);
+          const tag = b.colorTag(c.hex, p.x, p.y + 0.42, p.z, 0.24);
+          if (tag && p.floating) bobbing.push({ orb: tag, y: p.y + 0.42, ph: 0 });
           if (p.floating) bobbing.push({ orb, y: p.y, ph: rng() * 6 });
         }
       });

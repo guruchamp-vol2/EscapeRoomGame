@@ -16,6 +16,7 @@ export class Sfx {
       this.ctx = new Ctx();
       const comp = this.ctx.createDynamicsCompressor();
       comp.connect(this.ctx.destination);
+      this.comp = comp;
       this.master = this.ctx.createGain();
       this.master.gain.value = this.volume;
       this.master.connect(comp);
@@ -80,6 +81,7 @@ export class Sfx {
     if (!this.ctx) return;
     const s = SOUNDS[name];
     if (s) s(this);
+    this.onPlay?.(name);
   }
 
   // Continuous hum while holding a cube; pitch follows its size.

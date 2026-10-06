@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#0f141b" />
     <title>Perspective Lab</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/src/style.css" />
@@ -25,10 +28,23 @@
       <div id="toasts"></div>
       <div id="achievement-pop"></div>
       <div id="note-pop"><p class="note-head"></p><p class="note-body"></p><p class="note-foot"></p></div>
-      <div id="keyhints"><kbd>H</kbd> Hint <kbd>R</kbd> Recall cube <kbd>Esc</kbd> Pause</div>
+      <div id="keyhints"></div>
+      <div id="hold-ring"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" /></svg><span>Restarting…</span></div>
     </div>
+    <div id="flash"></div>
+    <div id="photo-hud" class="hidden">
+      <b>PHOTO MODE</b>
+      <span><kbd>Click</kbd> Save picture</span>
+      <span><kbd>WASD</kbd> <kbd>Space</kbd> <kbd>Shift</kbd> Move camera</span>
+      <span><kbd>Wheel</kbd> Zoom</span>
+      <span><kbd>[</kbd> <kbd>]</kbd> Tilt</span>
+      <span><kbd>G</kbd> Grid</span>
+      <span><kbd>P</kbd> / <kbd>Esc</kbd> Exit</span>
+    </div>
+    <div id="photo-grid" class="hidden"></div>
     <div id="chapter"><p class="ch-num" id="chapter-num"></p><h2 id="chapter-name"></h2><p id="chapter-tag"></p></div>
     <div id="fade"></div>
+    <div id="rotate"><b>↻</b>Turn your phone sideways to play</div>
 
     <div id="menu">
       <div class="card">
@@ -55,6 +71,7 @@
             </div>
           </div>
           <div class="account-bar" id="account-bar"></div>
+          <p class="menu-foot"><button class="linkish" data-action="credits">Credits</button></p>
         </section>
 
         <section data-screen="chambers">
@@ -90,6 +107,7 @@
           <p class="eyebrow" id="pause-chamber">Paused</p>
           <h2 id="pause-objective"></h2>
           <p class="sub" id="pause-time"></p>
+          <p class="tip" id="pause-tip"></p>
           <div class="buttons">
             <button class="primary" data-action="resume">Resume</button>
             <div class="row">
@@ -105,35 +123,108 @@
 
         <section data-screen="settings">
           <p class="eyebrow">Settings</p>
-          <div class="settings">
+          <div class="tabs" id="settings-tabs">
+            <button data-tab="audio" class="active">Audio</button>
+            <button data-tab="video">Video</button>
+            <button data-tab="game">Gameplay</button>
+            <button data-tab="access">Accessibility</button>
+          </div>
+          <div class="settings" data-tab="audio">
+            <label>Sound effects <output data-for="volume"></output>
+              <input type="range" name="volume" min="0" max="1" step="0.05" /></label>
+            <label>Music <output data-for="musicVolume"></output>
+              <input type="range" name="musicVolume" min="0" max="1" step="0.05" /></label>
+            <label class="check"><input type="checkbox" name="wren" /> WREN commentary</label>
+            <p class="form-note">The soundtrack is generated live: each world has its own key and tempo, and more instruments join as you solve the level.</p>
+          </div>
+          <div class="settings hidden" data-tab="video">
+            <label>Field of view <output data-for="fov"></output>
+              <input type="range" name="fov" min="60" max="110" step="1" /></label>
+            <label>Interface size <output data-for="uiScale"></output>
+              <input type="range" name="uiScale" min="0.8" max="1.5" step="0.05" /></label>
+            <label>Crosshair size <output data-for="crosshairSize"></output>
+              <input type="range" name="crosshairSize" min="0.6" max="2" step="0.1" /></label>
+            <label class="check"><input type="checkbox" name="highQuality" /> High-quality graphics (bloom, shadows)</label>
+            <label class="check"><input type="checkbox" name="showTimer" /> Show timer</label>
+          </div>
+          <div class="settings hidden" data-tab="game">
             <label>Mouse sensitivity <output data-for="sensitivity"></output>
               <input type="range" name="sensitivity" min="0.2" max="3" step="0.05" /></label>
-            <label>Field of view <output data-for="fov"></output>
-              <input type="range" name="fov" min="60" max="100" step="1" /></label>
-            <label>Volume <output data-for="volume"></output>
-              <input type="range" name="volume" min="0" max="1" step="0.05" /></label>
-            <label class="check"><input type="checkbox" name="highQuality" /> High-quality graphics (bloom, shadows)</label>
-            <label class="check"><input type="checkbox" name="wren" /> WREN commentary</label>
+            <label>Controller look speed <output data-for="padSensitivity"></output>
+              <input type="range" name="padSensitivity" min="0.3" max="2.5" step="0.05" /></label>
+            <label class="check"><input type="checkbox" name="invertY" /> Invert look Y</label>
+            <label class="check"><input type="checkbox" name="toggleSprint" /> Toggle sprint (press instead of hold)</label>
+          </div>
+          <div class="settings hidden" data-tab="access">
+            <label class="check"><input type="checkbox" name="reduceMotion" /> Reduce motion (no screen shake or zoom kicks)</label>
             <label class="check"><input type="checkbox" name="headBob" /> Head bob</label>
-            <label class="check"><input type="checkbox" name="invertY" /> Invert mouse Y</label>
-            <label class="check"><input type="checkbox" name="showTimer" /> Show timer</label>
+            <label class="check"><input type="checkbox" name="colorblind" /> Colour-blind tags: letters on coloured puzzle pieces (from the next level)</label>
+            <p class="form-note">WREN's lines are always subtitled. Every level has hints (H), and falling only sends you back to the last room.</p>
           </div>
           <div class="buttons"><button data-action="back">Back</button></div>
         </section>
 
         <section data-screen="controls">
           <p class="eyebrow">Controls</p>
-          <table class="controls">
-            <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Move</td></tr>
-            <tr><td><kbd>Shift</kbd></td><td>Sprint</td></tr>
-            <tr><td><kbd>Space</kbd></td><td>Jump</td></tr>
-            <tr><td><kbd>E</kbd></td><td>Pick up / drop / use</td></tr>
-            <tr><td><kbd>LMB</kbd> <kbd>RMB</kbd></td><td>Fire blue / orange portal</td></tr>
-            <tr><td><kbd>0</kbd>–<kbd>9</kbd></td><td>Type on a keypad you're looking at</td></tr>
-            <tr><td><kbd>R</kbd></td><td>Recall cubes to where they started</td></tr>
-            <tr><td><kbd>H</kbd></td><td>Hint</td></tr>
-            <tr><td><kbd>Esc</kbd></td><td>Pause</td></tr>
-          </table>
+          <div class="tabs" id="controls-tabs">
+            <button data-tab="keys" class="active">Keyboard &amp; mouse</button>
+            <button data-tab="pad">Controller</button>
+            <button data-tab="touch">Touch</button>
+          </div>
+          <div data-tab="keys">
+            <table class="controls binds" id="binds"></table>
+            <table class="controls">
+              <tr><td><kbd>LMB</kbd> <kbd>RMB</kbd></td><td>Fire blue / orange portal</td></tr>
+              <tr><td><kbd>0</kbd>–<kbd>9</kbd></td><td>Type on a keypad you're looking at</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>Pause</td></tr>
+            </table>
+            <p class="form-note">Click a key to rebind it, then press the new key. <button class="linkish" id="binds-reset">Reset to defaults</button></p>
+          </div>
+          <div data-tab="pad" class="hidden">
+            <table class="controls">
+              <tr><td><kbd>L-stick</kbd></td><td>Move (click it to sprint)</td></tr>
+              <tr><td><kbd>R-stick</kbd></td><td>Look</td></tr>
+              <tr><td><kbd>A</kbd></td><td>Jump</td></tr>
+              <tr><td><kbd>X</kbd></td><td>Pick up / use / type digit</td></tr>
+              <tr><td><kbd>RT</kbd> <kbd>LT</kbd></td><td>Fire blue / orange portal</td></tr>
+              <tr><td><kbd>LB</kbd></td><td>Sprint</td></tr>
+              <tr><td><kbd>D-pad ↑↓</kbd></td><td>Pick a keypad digit</td></tr>
+              <tr><td><kbd>B</kbd></td><td>Recall cubes / delete digit</td></tr>
+              <tr><td><kbd>Y</kbd></td><td>Hint</td></tr>
+              <tr><td><kbd>RB</kbd></td><td>Flashlight</td></tr>
+              <tr><td><kbd>View</kbd></td><td>Photo mode</td></tr>
+              <tr><td><kbd>Menu</kbd></td><td>Pause</td></tr>
+            </table>
+            <p class="form-note">In menus: D-pad or stick to move, A to choose, B to go back.</p>
+            <p class="form-note hidden"></p>
+            <p class="form-note" id="pad-status">No controller detected. Plug one in and press any button.</p>
+          </div>
+          <div data-tab="touch" class="hidden">
+            <table class="controls">
+              <tr><td>Left thumb</td><td>Joystick appears where you touch. Push it all the way to sprint.</td></tr>
+              <tr><td>Right thumb</td><td>Drag anywhere to look</td></tr>
+              <tr><td>Jump · Use</td><td>Jump · pick up, drop, press</td></tr>
+              <tr><td>Blue · orange rings</td><td>Fire portals (once you have the device)</td></tr>
+              <tr><td>? · ⟲ · 🔦 · 📷 · II</td><td>Hint · recall cubes · flashlight · photo · pause</td></tr>
+              <tr><td>Keypads</td><td>A number pad pops up while you look at one</td></tr>
+            </table>
+            <p class="form-note">Turn your phone sideways. Look sensitivity is in Settings → Gameplay.</p>
+          </div>
+          <div class="buttons"><button data-action="back">Back</button></div>
+        </section>
+
+        <section data-screen="credits">
+          <div class="credits" id="credits">
+            <h1>PERSPECTIVE<span>LAB</span></h1>
+            <p class="eyebrow">Created by</p><p class="big">Dhruv Bajaj</p>
+            <p class="eyebrow">Starring</p><p>WREN, caretaker drone</p><p>The Curator, in absentia</p><p>You, the visitor</p>
+            <p class="eyebrow">Architecture</p><p>504 chambers across 20 worlds</p><p>Every room generated, and every one solved by a robot first</p>
+            <p class="eyebrow">Music &amp; sound</p><p>Generated live in your browser with the Web Audio API</p>
+            <p class="eyebrow">Built with</p><p>three.js · Vite · Node.js · libSQL</p>
+            <p class="eyebrow">Inspired by</p><p>Portal · Superliminal · Antichamber · The Stanley Parable</p>
+            <p class="eyebrow">Special thanks</p><p>Everyone who fell into a pit so the next visitor wouldn't have to</p>
+            <p class="big section-gap">Thanks for playing.</p>
+          </div>
           <div class="buttons"><button data-action="back">Back</button></div>
         </section>
 
@@ -205,6 +296,8 @@
             <button type="submit">Save</button>
           </form>
           <p class="form-error" id="email-error"></p>
+          <p class="eyebrow section-gap">Lifetime</p>
+          <div class="stats life" id="profile-life"></div>
           <p class="eyebrow section-gap">Chambers</p>
           <table class="splits" id="profile-levels"></table>
           <p class="eyebrow section-gap" id="ach-count">Achievements</p>
@@ -230,7 +323,11 @@
               <button data-action="replay">Replay</button>
               <button data-action="leaderboard">Leaderboard</button>
             </div>
-            <button data-action="home">Main menu</button>
+            <div class="row">
+              <button data-action="share" id="share-btn">Share result</button>
+              <button data-action="home">Main menu</button>
+            </div>
+            <button class="hidden" data-action="credits" id="credits-btn">Roll credits</button>
           </div>
         </section>
       </div>

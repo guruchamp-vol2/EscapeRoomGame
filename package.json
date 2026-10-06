@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node server/index.js --dev",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "check:curve": "node scripts/check-curve.mjs"
   },
   "repository": {
     "type": "git",
