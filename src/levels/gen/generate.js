@@ -8,10 +8,13 @@ import { MODULE_IMPL_2 } from './modules2.js';
 import { ESCAPE_ROOM } from './modules3.js';
 import { decorate, centerpiece } from './decor.js';
 import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, CONNECTORS, STARTS, EXITS } from './spaces.js';
-
-const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM };
 import { signTexture } from '../../textures.js';
 import { makeRng, range, pick } from '../../random.js';
+import { computeDifficultyParams } from './difficulty.js';
+import { TensionManager } from './tension.js';
+import { PayoffManager } from './payoffs.js';
+
+const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM };
 
 // Weighted connector choice; never the same kind twice in a row.
 const CONNECTOR_WEIGHTS = { hall: 3, stairs: 2, bridge: 2, chicane: 1.6, gallery: 1.6 };
@@ -26,7 +29,20 @@ function pickConnector(rng, prev, canClimb) {
 export function buildGenerated(plan, b, ctx) {
   const rng = makeRng(plan.seed);
   const theme = b.theme;
-  const m = b.mat;
+  const difficultyMode = ctx.difficultyMode || 'NORMAL';
+  const diffParams = computeDifficultyParams(plan.diff ?? 0, difficultyMode);
+  const levelState = {
+    difficulty: plan.diff ?? 0,
+    difficultyMode,
+    diffParams,
+    multiRoomItems: new Map(),
+    tensionLevel: 0,
+    tensionManager: null,
+    payoffManager: null,
+    solvedIndexes: new Set(),
+  };
+  levelState.tensionManager = new TensionManager(b, ctx, levelState);
+  levelState.payoffManager = new PayoffManager(b, ctx, levelState);
 
   if (theme.sky) b.skyDome(theme.sky);
   if (theme.fogDensity) b.scene.fog = new THREE.FogExp2(theme.fog, theme.fogDensity);
@@ -49,7 +65,15 @@ export function buildGenerated(plan, b, ctx) {
       variant: theme.variant?.(slot), connector: range(rng, 3, 6),
     });
     dressRoom(b, cell, roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling, id === 'escape_room'));
-    const inst = impl.build(cell, b, ctx, rng, { slot, remoteX: 2000 + slot * 400, diff: plan.diff ?? 0, twists: plan.twists ?? [] }, dims);
+    const inst = impl.build(cell, b, ctx, rng, {
+      slot,
+      remoteX: 2000 + slot * 400,
+      diff: plan.diff ?? 0,
+      difficultyMode,
+      diffParams,
+      levelState,
+      twists: plan.twists ?? [],
+    }, dims);
     decorate(b, cell, rng, inst.reserve);
     centerpiece(b, cell, rng);
     const kind = pickConnector(layout, cells.at(-1)?.connector, dims.exitY == null || dims.exitY === 0);
@@ -63,9 +87,6 @@ export function buildGenerated(plan, b, ctx) {
   // side wall of a random room, glowing faintly.
   if (plan.number && (plan.number - 5) % 25 === 12) {
     const world = plan.world;
-    // Candidate spots: near a side wall in the south part of a room (ledges are
-    // north), never over a pit, never on a wall a puzzle reserved, never in the
-    // loop corridor (its side walls are the loop's ends).
     const spots = [];
     for (const { id, cell: c, inst } of cells) {
       if (id === 'loop_rooms') continue;
@@ -106,18 +127,17 @@ export function buildGenerated(plan, b, ctx) {
   }
 
   // Final exit.
-  const zEnd = z0 + T; // start of the last connector's far end
+  const zEnd = z0 + T;
   const exitKind = pick(layout, EXITS);
   buildExit(b, y0, zEnd, layout, exitKind);
   buildVista(b, layout, { zMin: zEnd - 10, zMax: 8 });
 
-  // Blackout twist: almost no light. The player gets a flashlight (F).
   const blackout = plan.twists?.includes('blackout');
   if (blackout) {
     b.hemi.intensity *= 0.08;
     b.scene.environmentIntensity = 0.02;
     b.scene.traverse((o) => { if (o.isLight && o !== b.hemi) o.intensity *= 0.1; });
-    b.mat.light.color.multiplyScalar(0.04); // ceiling panels go dark too
+    b.mat.light.color.multiplyScalar(0.04);
   }
 
   let checkpoint = null;
@@ -142,9 +162,20 @@ export function buildGenerated(plan, b, ctx) {
       max: new THREE.Vector3(1.2, y0 + 3.2, zEnd - 4.5),
     },
     update(dt, player) {
+      levelState.tensionLevel = Math.min(1, (cells.filter((c) => c.done).length / Math.max(1, cells.length)) * 1.2);
+      levelState.tensionManager?.update(dt, player);
+
       for (const c of cells) {
         c.inst.update?.(dt, player);
-        if (!c.done && c.inst.solved()) c.done = true;
+        if (!c.done && c.inst.solved()) {
+          c.done = true;
+          levelState.solvedIndexes.add(c.cell.index);
+          levelState.payoffManager?.triggerRoomSolved({
+            roomIndex: c.cell.index,
+            roomLabel: c.inst.label,
+            cell: c.cell,
+          });
+        }
         c.cell.door.setOpen(c.inst.doorOpen ? c.inst.doorOpen() : c.done);
         if (c.cell.contains(player.pos) && player.onGround) checkpoint = c.cell;
       }
@@ -161,7 +192,6 @@ export function buildGenerated(plan, b, ctx) {
       for (const c of cells) c.inst.onTeleport?.(portal);
     },
     debug: {
-      // Copy descriptors, not values, so live getters (e.g. the loop's room) stay live.
       cells: cells.map((entry) => Object.defineProperties({
         id: entry.id, x0: entry.cell.x0, x1: entry.cell.x1, zS: entry.cell.zS, zN: entry.cell.zN,
         y0: entry.cell.y0, exitY: entry.cell.exitY, path: entry.path, connector: entry.connector,
@@ -169,6 +199,541 @@ export function buildGenerated(plan, b, ctx) {
       }, Object.getOwnPropertyDescriptors(entry.inst.debug))),
       exitZ: zEnd - 5.5,
       layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector) },
+      difficulty: { mode: difficultyMode, diff: plan.diff ?? 0, params: diffParams },
     },
   };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

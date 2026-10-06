@@ -1,194 +1,442 @@
-// Procedural sound effects with the Web Audio API — no audio files needed.
-// The AudioContext is created on the first user gesture (browsers require it).
+// Decides what every generated level contains — which puzzle modules, in what
+// order, how hard, which world — without building any geometry. Pure logic,
+// shared with the server (which needs level ids and minimum plausible times).
+import { WORLDS, LEVELS_PER_WORLD } from './worlds.js';
+import { makeRng, pick, irange, shuffle } from '../../random.js';
 
-export class Sfx {
-  constructor() {
-    this.ctx = null;
-    this.master = null;
-    this.volume = 0.7;
-    this.held = null;
-  }
+export const FIRST_GENERATED = 5;
+export const GENERATED_COUNT = 500;
+export const LAST_GENERATED = FIRST_GENERATED + GENERATED_COUNT - 1;
 
-  unlock() {
-    if (!this.ctx) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      this.ctx = new Ctx();
-      const comp = this.ctx.createDynamicsCompressor();
-      comp.connect(this.ctx.destination);
-      this.comp = comp;
-      this.master = this.ctx.createGain();
-      this.master.gain.value = this.volume;
-      this.master.connect(comp);
-      this._noiseBuffer = this._makeNoise();
-      this._ambience();
-    }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
-  }
+const worldStart = (w) => FIRST_GENERATED + w * LEVELS_PER_WORLD;
 
-  setVolume(v) {
-    this.volume = v;
-    if (this.master) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
-  }
+export const MODULES = {
+  grow_plate: { name: 'Pressure Plate', min: 5, weight: 3, rating: 1, secs: 4 },
+  step_ledge: { name: 'Ledge', min: 5, weight: 3, rating: 1, secs: 4 },
+  shrink_socket: { name: 'Socket', min: 5, weight: 3, rating: 1.5, secs: 4 },
+  portal_glass: { name: 'Glass Wall', min: 5, weight: 3, rating: 1.5, secs: 3, gun: true },
+  portal_ledge: { name: 'High Exit', min: 5, weight: 3, rating: 2, secs: 3, gun: true },
+  anamorph_code: { name: 'Anamorph', min: 5, weight: 2, rating: 2, secs: 4 },
+  loop_rooms: { name: 'Loop', min: 5, weight: 2, rating: 2.5, secs: 6 },
+  bigger_inside: { name: 'Bigger Inside', min: 5, weight: 2, rating: 2.5, secs: 5 },
+  color_count: { name: 'Colour Count', min: worldStart(0), weight: 2, rating: 2, secs: 4 },
+  button_sequence: { name: 'Sequence', min: worldStart(1), weight: 2, rating: 2, secs: 4 },
+  bounce_pad: { name: 'Bounce Pad', min: worldStart(2), weight: 3, rating: 2.5, secs: 3, isNew: true },
+  portal_pit: { name: 'Chasm', min: worldStart(3), weight: 3, rating: 3, secs: 3, gun: true },
+  keycard_doors: { name: 'Keycards', min: worldStart(4), weight: 3, rating: 3, secs: 6, isNew: true },
+  dark_room: { name: 'Blackout Room', min: worldStart(5), weight: 2, rating: 3, secs: 4 },
+  laser_fence: { name: 'Laser Fence', min: worldStart(6), weight: 3, rating: 3.5, secs: 5, isNew: true },
+  two_plates: { name: 'Twin Plates', min: worldStart(7), weight: 2, rating: 3.5, secs: 8 },
+  memory_sequence: { name: 'Memory', min: worldStart(8), weight: 2, rating: 3, secs: 6, isNew: true },
+  window_code: { name: 'Window', min: worldStart(9), weight: 2, rating: 3, secs: 3 },
+  fan_lift: { name: 'Wind Lift', min: worldStart(10), weight: 3, rating: 3.5, secs: 4, isNew: true },
+  cube_rescue: { name: 'Rescue', min: worldStart(11), weight: 2, rating: 4, secs: 6, gun: true },
+  stack_ledge: { name: 'Stack', min: worldStart(12), weight: 3, rating: 4, secs: 8, isNew: true },
+  math_code: { name: 'Riddle', min: worldStart(13), weight: 2, rating: 3.5, secs: 4, isNew: true },
+  collapsing_floor: { name: 'Crumbling Floor', min: worldStart(14), weight: 3, rating: 4, secs: 3, isNew: true },
+  teleport_maze: { name: 'Teleporters', min: worldStart(15), weight: 3, rating: 4, secs: 4, isNew: true },
+  escape_room: { name: 'Escape Room', min: 10, weight: 0, rating: 4, secs: 25, staple: true },
+  sprint_door: { name: 'Sprint Door', min: worldStart(17), weight: 3, rating: 4.5, secs: 3, isNew: true },
+};
 
-  _makeNoise() {
-    const len = this.ctx.sampleRate;
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    return buf;
-  }
+export const TWISTS = {
+  decoys: { name: 'Fake Panels', min: worldStart(16), chance: 0.6, rating: 1 },
+  blackout: { name: 'Blackout', min: worldStart(18), chance: 0.35, rating: 2 },
+};
 
-  _env(gainNode, t, attack, dur, peak) {
-    const g = gainNode.gain;
-    g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(peak, t + attack);
-    g.exponentialRampToValueAtTime(0.0001, t + dur);
-  }
+export const INTRODUCTIONS = WORLDS.map((_, w) => {
+  const n = worldStart(w);
+  const mod = Object.keys(MODULES).find((m) => MODULES[m].min === n && n > FIRST_GENERATED);
+  const twist = Object.keys(TWISTS).find((t) => TWISTS[t].min === n);
+  return mod ?? twist ?? (w === 0 ? 'color_count' : null);
+});
 
-  tone({ type = 'sine', freq = 440, to = freq, dur = 0.2, gain = 0.2, attack = 0.005, delay = 0 }) {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime + delay;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t);
-    if (to !== freq) osc.frequency.exponentialRampToValueAtTime(to, t + dur);
-    this._env(g, t, attack, dur, gain);
-    osc.connect(g).connect(this.master);
-    osc.start(t);
-    osc.stop(t + dur + 0.05);
-  }
+const ADJ = ['Hollow', 'Quiet', 'Folded', 'Broken', 'Silent', 'Hidden', 'Shifting', 'Endless', 'Narrow', 'Tilted', 'Mirrored',
+  'Forgotten', 'Sunken', 'Floating', 'Inverted', 'Twisted', 'Lonely', 'Bright', 'Restless', 'Patient', 'Distant', 'Curious',
+  'Velvet', 'Hushed', 'Crooked', 'Gilded', 'Fractured', 'Wandering', 'Spiral', 'Paper', 'Iron', 'Glass', 'Amber', 'Cobalt'];
+const NOUN = ['Atrium', 'Vault', 'Corridor', 'Gallery', 'Chamber', 'Annex', 'Hall', 'Cellar', 'Loft', 'Study', 'Observatory',
+  'Cloister', 'Foyer', 'Archive', 'Rotunda', 'Workshop', 'Antechamber', 'Passage', 'Courtyard', 'Conservatory', 'Stairwell',
+  'Reliquary', 'Terrace', 'Crypt', 'Parlour', 'Nave', 'Pavilion', 'Lantern', 'Threshold', 'Hangar', 'Labyrinth', 'Orrery'];
 
-  noise({ dur = 0.2, gain = 0.2, filter = 'lowpass', freq = 1200, to = freq, q = 1, attack = 0.005, delay = 0 }) {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime + delay;
-    const src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuffer;
-    const f = this.ctx.createBiquadFilter();
-    f.type = filter;
-    f.Q.value = q;
-    f.frequency.setValueAtTime(freq, t);
-    if (to !== freq) f.frequency.exponentialRampToValueAtTime(to, t + dur);
-    const g = this.ctx.createGain();
-    this._env(g, t, attack, dur, gain);
-    src.connect(f).connect(g).connect(this.master);
-    src.start(t, Math.random() * 0.5);
-    src.stop(t + dur + 0.05);
-  }
-
-  play(name) {
-    if (!this.ctx) return;
-    const s = SOUNDS[name];
-    if (s) s(this);
-    this.onPlay?.(name);
-  }
-
-  // Continuous hum while holding a cube; pitch follows its size.
-  startHeld() {
-    if (!this.ctx || this.held) return;
-    const osc = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = 'sine';
-    osc2.type = 'triangle';
-    g.gain.value = 0.0001;
-    g.gain.setTargetAtTime(0.05, this.ctx.currentTime, 0.08);
-    osc.connect(g);
-    osc2.connect(g);
-    g.connect(this.master);
-    osc.start();
-    osc2.start();
-    this.held = { osc, osc2, g };
-  }
-
-  updateHeld(size) {
-    if (!this.held) return;
-    const f = 70 + 260 / (0.6 + size);
-    const t = this.ctx.currentTime;
-    this.held.osc.frequency.setTargetAtTime(f, t, 0.05);
-    this.held.osc2.frequency.setTargetAtTime(f * 1.503, t, 0.05);
-  }
-
-  stopHeld() {
-    if (!this.held) return;
-    const { osc, osc2, g } = this.held;
-    const t = this.ctx.currentTime;
-    g.gain.setTargetAtTime(0.0001, t, 0.05);
-    osc.stop(t + 0.3);
-    osc2.stop(t + 0.3);
-    this.held = null;
-  }
-
-  _ambience() {
-    const g = this.ctx.createGain();
-    g.gain.value = 0.035;
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 180;
-    for (const freq of [55, 55.4, 110.3]) {
-      const o = this.ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = freq;
-      o.connect(f);
-      o.start();
-    }
-    f.connect(g).connect(this.master);
-  }
+export function difficulty(n) {
+  const t = Math.min(1, Math.max(0, (n - FIRST_GENERATED) / (LAST_GENERATED - FIRST_GENERATED)));
+  return t ** 0.75;
 }
 
-const SOUNDS = {
-  step: (s) => s.noise({ dur: 0.07, gain: 0.08, freq: 500 + Math.random() * 300, filter: 'lowpass' }),
-  jump: (s) => s.noise({ dur: 0.12, gain: 0.06, freq: 900, to: 400 }),
-  land: (s) => {
-    s.tone({ freq: 110, to: 45, dur: 0.16, gain: 0.25 });
-    s.noise({ dur: 0.1, gain: 0.12, freq: 400 });
-  },
-  fireBlue: (s) => {
-    s.tone({ type: 'triangle', freq: 1100, to: 280, dur: 0.2, gain: 0.14 });
-    s.noise({ dur: 0.15, gain: 0.05, filter: 'bandpass', freq: 3000, to: 800, q: 4 });
-  },
-  fireOrange: (s) => {
-    s.tone({ type: 'triangle', freq: 800, to: 200, dur: 0.22, gain: 0.14 });
-    s.noise({ dur: 0.15, gain: 0.05, filter: 'bandpass', freq: 2200, to: 600, q: 4 });
-  },
-  portalOpen: (s) => {
-    s.tone({ freq: 180, to: 520, dur: 0.35, gain: 0.12, delay: 0.05 });
-    s.noise({ dur: 0.4, gain: 0.07, filter: 'bandpass', freq: 400, to: 2400, q: 3, delay: 0.05 });
-  },
-  fizzle: (s) => {
-    s.tone({ type: 'sawtooth', freq: 260, to: 70, dur: 0.25, gain: 0.07 });
-    s.noise({ dur: 0.2, gain: 0.06, filter: 'highpass', freq: 3000 });
-  },
-  teleport: (s) => {
-    s.noise({ dur: 0.35, gain: 0.12, filter: 'bandpass', freq: 2400, to: 300, q: 2 });
-    s.tone({ freq: 500, to: 160, dur: 0.3, gain: 0.08 });
-  },
-  pickup: (s) => s.tone({ freq: 420, to: 760, dur: 0.12, gain: 0.12 }),
-  drop: (s) => s.tone({ freq: 600, to: 260, dur: 0.14, gain: 0.1 }),
-  thud: (s) => {
-    s.tone({ freq: 90, to: 35, dur: 0.3, gain: 0.35 });
-    s.noise({ dur: 0.2, gain: 0.15, freq: 300 });
-  },
-  item: (s) => [660, 880, 1320].forEach((f, i) => s.tone({ freq: f, dur: 0.18, gain: 0.1, delay: i * 0.07 })),
-  unlock: (s) => {
-    s.tone({ type: 'square', freq: 523, dur: 0.12, gain: 0.05 });
-    s.tone({ type: 'square', freq: 784, dur: 0.2, gain: 0.05, delay: 0.1 });
-  },
-  door: (s) => {
-    s.noise({ dur: 1.4, gain: 0.1, freq: 300, to: 1400, attack: 0.15 });
-    s.tone({ type: 'sawtooth', freq: 48, to: 60, dur: 1.2, gain: 0.05, attack: 0.1 });
-  },
-  beep: (s) => s.tone({ type: 'square', freq: 1250, dur: 0.06, gain: 0.04 }),
-  error: (s) => {
-    s.tone({ type: 'square', freq: 220, dur: 0.15, gain: 0.06 });
-    s.tone({ type: 'square', freq: 180, dur: 0.25, gain: 0.06, delay: 0.17 });
-  },
-  denied: (s) => s.tone({ type: 'square', freq: 160, dur: 0.18, gain: 0.05 }),
-  achievement: (s) => [784, 988, 1175, 1568].forEach((f, i) =>
-    s.tone({ type: 'triangle', freq: f, dur: 0.3, gain: 0.08, delay: 0.25 + i * 0.08 })),
-  hint: (s) => s.tone({ freq: 880, to: 1100, dur: 0.15, gain: 0.06 }),
-  ui: (s) => s.tone({ freq: 700, dur: 0.05, gain: 0.04 }),
-  win: (s) => [523, 659, 784, 1047, 1319].forEach((f, i) =>
-    s.tone({ type: 'triangle', freq: f, dur: 0.5, gain: 0.1, delay: i * 0.12 })),
+function moduleCount(n) {
+  if (n < 105) return 3;
+  if (n < 330) return 4;
+  return 5;
+}
+
+export const levelLoad = (modules, twists = []) =>
+  modules.reduce((sum, m) => sum + MODULES[m].rating, 0) + twists.reduce((sum, t) => sum + TWISTS[t].rating, 0);
+
+export const levelScore = (modules, diff, twists = []) => levelLoad(modules, twists) * (1 + 0.8 * diff);
+
+function weightedPick(rng, ids, avoid, boost) {
+  const pool = ids.filter((id) => !avoid.has(id));
+  const list = pool.length ? pool : ids;
+  const w = (id) => MODULES[id].weight * (id === boost ? 3 : 1);
+  const total = list.reduce((s, id) => s + w(id), 0);
+  let r = rng() * total;
+  for (const id of list) {
+    r -= w(id);
+    if (r <= 0) return id;
+  }
+  return list[list.length - 1];
+}
+
+export const MODULE_FINGERPRINTS = {
+  grow_plate: { family: 'pressure', complexity: 1, themes: ['mechanical', 'interactive'] },
+  step_ledge: { family: 'platforming', complexity: 1, themes: ['physical', 'navigation'] },
+  shrink_socket: { family: 'pressure', complexity: 1.5, themes: ['mechanical', 'scale'] },
+  portal_glass: { family: 'portal', complexity: 1.5, themes: ['portal', 'optical'] },
+  portal_ledge: { family: 'portal', complexity: 2, themes: ['portal', 'navigation'] },
+  anamorph_code: { family: 'code', complexity: 2, themes: ['optical', 'code'] },
+  loop_rooms: { family: 'spatial', complexity: 2.5, themes: ['loop', 'spatial'] },
+  bigger_inside: { family: 'spatial', complexity: 2.5, themes: ['spatial', 'scale'] },
+  color_count: { family: 'logic', complexity: 2, themes: ['code', 'colour'] },
+  button_sequence: { family: 'logic', complexity: 2, themes: ['sequence', 'timing'] },
+  bounce_pad: { family: 'platforming', complexity: 2.5, themes: ['physics', 'navigation'] },
+  portal_pit: { family: 'portal', complexity: 3, themes: ['portal', 'platforming'] },
+  keycard_doors: { family: 'logic', complexity: 3, themes: ['sequence', 'lock'] },
+  dark_room: { family: 'sensory', complexity: 3, themes: ['darkness', 'light'] },
+  laser_fence: { family: 'spatial', complexity: 3.5, themes: ['light', 'barrier'] },
+  two_plates: { family: 'pressure', complexity: 3.5, themes: ['mechanical', 'sync'] },
+  memory_sequence: { family: 'logic', complexity: 3, themes: ['memory', 'sequence'] },
+  window_code: { family: 'optical', complexity: 3, themes: ['optical', 'code'] },
+  fan_lift: { family: 'physics', complexity: 3.5, themes: ['physics', 'navigation'] },
+  cube_rescue: { family: 'spatial', complexity: 4, themes: ['spatial', 'platforming'] },
+  stack_ledge: { family: 'platforming', complexity: 4, themes: ['physics', 'navigation'] },
+  math_code: { family: 'logic', complexity: 3.5, themes: ['code', 'math'] },
+  collapsing_floor: { family: 'physics', complexity: 4, themes: ['timing', 'navigation'] },
+  teleport_maze: { family: 'spatial', complexity: 4, themes: ['portal', 'maze'] },
+  escape_room: { family: 'exploration', complexity: 4, themes: ['search', 'narrative'] },
+  sprint_door: { family: 'timing', complexity: 4.5, themes: ['timing', 'speed'] },
 };
+
+function dissimilarityScore(moduleA, moduleB) {
+  const a = MODULE_FINGERPRINTS[moduleA];
+  const b = MODULE_FINGERPRINTS[moduleB];
+  if (!a || !b) return 0.5;
+
+  let score = 0;
+  if (a.family !== b.family) score += 0.5;
+  if (Math.abs(a.complexity - b.complexity) > 0.8) score += 0.3;
+  const themesA = new Set(a.themes);
+  const themesB = new Set(b.themes);
+  const shared = [...themesA].filter((theme) => themesB.has(theme)).length;
+  if (shared === 0) score += 0.2;
+  return Math.min(1, score);
+}
+
+function validateRoomDissimilarity(modules, threshold = 0.4) {
+  for (let i = 0; i < modules.length - 1; i++) {
+    if (dissimilarityScore(modules[i], modules[i + 1]) < threshold) return false;
+  }
+  return true;
+}
+
+function weightedPickWithDissimilarity(rng, ids, avoid, boost, lastModule, threshold = 0.4) {
+  const pool = ids.filter((id) => !avoid.has(id) && (!lastModule || dissimilarityScore(lastModule, id) >= threshold));
+  const list = pool.length ? pool : ids;
+  const w = (id) => MODULES[id].weight * (id === boost ? 3 : 1);
+  const total = list.reduce((s, id) => s + w(id), 0);
+  let r = rng() * total;
+  for (const id of list) {
+    r -= w(id);
+    if (r <= 0) return id;
+  }
+  return list[list.length - 1];
+}
+
+function finalize(plan) {
+  plan.gun = plan.modules.some((m) => MODULES[m].gun);
+  plan.minMs = plan.modules.reduce((s, m) => s + MODULES[m].secs, 0) * 1000;
+  return plan;
+}
+
+function makePlan({ id, number, seedText, count, available, world, used, boost, force, diff, minLoad = 0, aim = 0.5, recent = new Set(), staples = [] }) {
+  const rng = makeRng(seedText);
+  const twists = Object.keys(TWISTS).filter((t) => number >= TWISTS[t].min &&
+    (number === TWISTS[t].min || rng() < TWISTS[t].chance));
+  const candidates = [];
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const modules = [];
+    const avoid = new Set([...(force ? [force] : []), ...(attempt < 300 ? recent : [])]);
+    for (let i = 0; i < count - (force ? 1 : 0); i++) {
+      const lastModule = modules[modules.length - 1] || null;
+      const m = weightedPickWithDissimilarity(rng, available, avoid, boost, lastModule, 0.4);
+      modules.push(m);
+      avoid.add(m);
+    }
+    if (force) modules.push(force);
+    else modules.sort((a, b) => MODULES[a].rating - MODULES[b].rating);
+    modules.push(...staples);
+    if (!validateRoomDissimilarity(modules, 0.4)) continue;
+    const sig = modules.join('+');
+    if (used?.has(sig) || candidates.some((c) => c.sig === sig)) continue;
+    const fresh = modules.filter((m) => !recent.has(m)).length;
+    candidates.push({ modules, sig, load: levelLoad(modules, twists), fresh });
+  }
+  if (!candidates.length) candidates.push({ modules: [...available.slice(0, count)], sig: '', load: 0, fresh: 0 });
+  const loads = candidates.map((c) => c.load).sort((a, b) => a - b);
+  const want = Math.max(minLoad, loads[Math.min(loads.length - 1, Math.floor(aim * loads.length))]);
+  const ok = candidates.filter((c) => c.load >= want - 1e-9);
+  const pool0 = ok.length ? ok : [candidates.reduce((a, c) => (c.load > a.load ? c : a))];
+  const lowest = Math.min(...pool0.map((c) => c.load));
+  const tier = pool0.filter((c) => c.load === lowest);
+  const bestFresh = Math.max(...tier.map((c) => c.fresh));
+  const pool = tier.filter((c) => c.fresh === bestFresh);
+  const chosen = pool[Math.floor(rng() * pool.length)];
+  const modules = chosen.modules;
+  used?.add(chosen.sig);
+  const name = `${pick(rng, ADJ)} ${pick(rng, NOUN)}`;
+  return finalize({
+    id, number, name, seed: seedText, modules, twists, diff, load: levelLoad(modules, twists), score: levelScore(modules, diff, twists),
+    world: world.index, worldName: world.name, tagline: world.tagline,
+  });
+}
+
+let cached = null;
+
+export function generatedPlans() {
+  if (cached) return cached;
+  cached = [];
+  const usedByWorld = new Map();
+  const usedNames = new Set();
+  const nameRng = makeRng('names');
+  let prevLoad = 0;
+  const history = [];
+  for (let n = FIRST_GENERATED; n <= LAST_GENERATED; n++) {
+    const worldIndex = Math.floor((n - FIRST_GENERATED) / LEVELS_PER_WORLD);
+    const world = { ...WORLDS[worldIndex], index: worldIndex };
+    if (!usedByWorld.has(worldIndex)) usedByWorld.set(worldIndex, new Set());
+    const rng = makeRng(`count:${n}`);
+    const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && !MODULES[m].staple);
+    const staples = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && MODULES[m].staple);
+    const recent = new Set(history.slice(-2).flat());
+    const intro = INTRODUCTIONS[worldIndex];
+    const isIntroLevel = n === worldStart(worldIndex);
+    const plan = makePlan({
+      id: `p${n}`, number: n, seedText: `level:${n}`, count: moduleCount(n), available, world,
+      used: usedByWorld.get(worldIndex),
+      boost: MODULES[intro] ? intro : null,
+      force: isIntroLevel && MODULES[intro] ? intro : null,
+      diff: difficulty(n),
+      minLoad: prevLoad,
+      aim: 0.3 + 0.55 * ((n - worldStart(worldIndex)) / (LEVELS_PER_WORLD - 1)),
+      recent,
+      staples,
+    });
+    prevLoad = plan.load;
+    history.push(plan.modules);
+    plan.introduces = isIntroLevel ? intro : n === MODULES.escape_room.min ? 'escape_room' : null;
+    while (usedNames.has(plan.name)) plan.name = `${pick(nameRng, ADJ)} ${pick(nameRng, NOUN)}`;
+    usedNames.add(plan.name);
+    cached.push(plan);
+  }
+  return cached;
+}
+
+export function dailyPlan(date) {
+  const rng = makeRng(`daily-world:${date}`);
+  const worldIndex = Math.floor(rng() * WORLDS.length);
+  const world = { ...WORLDS[worldIndex], index: worldIndex };
+  const plan = makePlan({
+    id: 'daily', number: 0, seedText: `daily:${date}`, count: 3, available: shuffle(rng, Object.keys(MODULES).filter((m) => !MODULES[m].staple)), staples: ['escape_room'],
+    world, used: null, diff: 0.5 + rng() * 0.3,
+  });
+  plan.name = `Daily · ${plan.name}`;
+  return plan;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"path":"src/levels/gen/plan.js"},{
