@@ -101,8 +101,6 @@ database from [Turso](https://turso.tech).
    for:
    - `DATABASE_URL` – the `libsql://…` URL
    - `DATABASE_AUTH_TOKEN` – the token
-   - `PUBLIC_URL` – your Render URL, e.g. `https://perspective-lab.onrender.com`
-     (used in password-reset links)
 3. Deploy. The log line should say `storage: hosted libSQL`.
 
 The tables are created automatically on first start. Render's free tier
@@ -129,7 +127,7 @@ npm start          # serves dist/ and the API
 | `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | unset | Hosted libSQL/Turso database (use this in production) |
 | `DB_FILE` | `data/game.db` | Local database file when `DATABASE_URL` is unset |
 | `TRUST_PROXY` | unset | Set to `1` behind a host's proxy (Render) so rate limits use the real client IP |
-| `PUBLIC_URL` | `http://localhost:PORT` | Base URL used in password-reset links |
+| `PUBLIC_URL` | Render’s `RENDER_EXTERNAL_URL`, else `http://localhost:PORT` | Base URL used in password-reset links (set automatically on Render) |
 | `SECURE_COOKIES` | unset | Set to `1` when serving over HTTPS |
 | `AUTH_LIMIT_PER_MIN` | `10` | Login/sign-up attempts per IP per minute |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `MAIL_FROM` | unset | Email delivery |

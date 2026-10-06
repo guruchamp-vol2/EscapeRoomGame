@@ -24,7 +24,7 @@ const api = createApi(db, {
   mailer: createMailer(),
   authLimit: Number(process.env.AUTH_LIMIT_PER_MIN) || 10,
   trustProxy: process.env.TRUST_PROXY === '1',
-  publicUrl: (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, ''),
+  publicUrl: (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`).replace(/\/$/, ''),
 });
 
 const TYPES = {
