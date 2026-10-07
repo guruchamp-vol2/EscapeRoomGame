@@ -10,7 +10,7 @@ const IRIS = {
 const PITCH = { happy: 520, excited: 640, thoughtful: 430, worried: 560, sad: 360, smug: 470 };
 
 // Draws the eye for a mood. `blink` 0..1 closes the lids.
-function drawEye(g, size, mood, blink = 0, look = [0, 0]) {
+export function drawEye(g, size, mood, blink = 0, look = [0, 0]) {
   const c = size / 2;
   g.clearRect(0, 0, size, size);
   // Visor.

@@ -617,3 +617,25 @@ button.choice:hover { border-color: #ffcf6b; }
 #ending p.end { font-size: 28px; letter-spacing: 0.2em; color: #ffcf6b; font-weight: 700; }
 #ending .skip { position: absolute; right: 24px; bottom: 20px; }
 @keyframes fade-in { from { opacity: 0; } }
+
+/* ---------- story scenes ---------- */
+#cutscene { position: fixed; inset: 0; z-index: 55; display: none; cursor: pointer; }
+#cutscene.show { display: block; }
+body.cutscene #wren-box, body.cutscene #hud { display: none !important; }
+.cs-bars { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(#000 0 9%, transparent 9% 91%, #000 91% 100%); }
+.cs-title { position: absolute; left: 50%; top: 11%; transform: translateX(-50%); text-align: center; animation: cs-title 5s ease-out forwards; }
+.cs-title small { display: block; font: 600 12px var(--mono); letter-spacing: 0.3em; color: #ffcf6b; }
+.cs-title b { display: block; margin-top: 6px; font-size: 30px; letter-spacing: 0.04em; text-shadow: 0 2px 12px #000; }
+@keyframes cs-title { 0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0.25; } }
+.cs-box { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); width: min(760px, 90vw);
+  padding: 14px 20px; background: rgba(6, 8, 12, 0.78); border: 1px solid var(--line); border-radius: 10px; min-height: 86px; }
+.cs-who { display: block; font: 700 12px var(--mono); letter-spacing: 0.2em; margin-bottom: 6px; }
+.cs-text { margin: 0; font-size: 19px; line-height: 1.5; }
+.cs-text.narration { font-style: italic; color: #c9d2dc; }
+.cs-foot { position: absolute; left: 0; right: 0; bottom: 3.5%; display: flex; justify-content: space-between; padding: 0 24px; font-size: 13px; color: var(--muted); }
+.cs-hint.ready { color: #ffcf6b; animation: blink 1.2s infinite; }
+.scenes { display: flex; flex-wrap: wrap; gap: 6px; text-align: left; }
+.scenes .scene { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); }
+.scenes .scene span { display: block; font: 600 10px var(--mono); color: var(--muted); }
+.scenes .scene.missing { color: var(--muted); opacity: 0.5; }

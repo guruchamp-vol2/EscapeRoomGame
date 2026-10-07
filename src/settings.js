@@ -13,6 +13,7 @@ export const DEFAULTS = {
   highQuality: true, // bloom, vignette and shadows
   raceGhost: true,
   wren: true, // the caretaker drone's commentary
+  storyScenes: true, // a story scene before every third level (first time only)
   // Accessibility & comfort
   reduceMotion: false, // no screen shake, FOV kicks or head bob
   colorblind: false, // letter tags on colour-coded puzzles

@@ -32,7 +32,7 @@
 // rhythm (featured, pulse) → thematic by chapter (boss, world rhythm).
 import { WORLDS, LEVELS_PER_WORLD } from './worlds.js';
 import { makeRng, pick, irange, shuffle } from '../../random.js';
-import { chapterFor, storyPulse, PULSE, isBossLevel, isFeatureLevel, FEATURE_FLAVOR, getNarrativeBeat } from './storyline.js';
+import { chapterFor, storyPulse, PULSE, isBossLevel, FEATURE_FLAVOR, getNarrativeBeat } from './storyline.js';
 
 export const FIRST_GENERATED = 5; // levels 1–4 are hand-made
 export const GENERATED_COUNT = 500;
@@ -52,26 +52,39 @@ export const MODULES = {
   anamorph_code: { name: 'Anamorph', min: 5, weight: 2, rating: 2, secs: 4 },
   loop_rooms: { name: 'Loop', min: 5, weight: 2, rating: 2.5, secs: 6 },
   bigger_inside: { name: 'Bigger Inside', min: 5, weight: 2, rating: 2.5, secs: 5 },
-  // One new mechanic per world.
-  color_count: { name: 'Colour Count', min: worldStart(0), weight: 2, rating: 2, secs: 4 },
-  button_sequence: { name: 'Sequence', min: worldStart(1), weight: 2, rating: 2, secs: 4 },
-  bounce_pad: { name: 'Bounce Pad', min: worldStart(2), weight: 3, rating: 2.5, secs: 3, isNew: true },
-  portal_pit: { name: 'Chasm', min: worldStart(3), weight: 3, rating: 3, secs: 3, gun: true },
-  keycard_doors: { name: 'Keycards', min: worldStart(4), weight: 3, rating: 3, secs: 6, isNew: true },
-  dark_room: { name: 'Blackout Room', min: worldStart(5), weight: 2, rating: 3, secs: 4 },
-  laser_fence: { name: 'Laser Fence', min: worldStart(6), weight: 3, rating: 3.5, secs: 5, isNew: true },
-  two_plates: { name: 'Twin Plates', min: worldStart(7), weight: 2, rating: 3.5, secs: 8 },
-  memory_sequence: { name: 'Memory', min: worldStart(8), weight: 2, rating: 3, secs: 6, isNew: true },
-  window_code: { name: 'Window', min: worldStart(9), weight: 2, rating: 3, secs: 3 },
-  fan_lift: { name: 'Wind Lift', min: worldStart(10), weight: 3, rating: 3.5, secs: 4, isNew: true },
-  cube_rescue: { name: 'Rescue', min: worldStart(11), weight: 2, rating: 4, secs: 6, gun: true },
-  stack_ledge: { name: 'Stack', min: worldStart(12), weight: 3, rating: 4, secs: 8, isNew: true },
-  math_code: { name: 'Riddle', min: worldStart(13), weight: 2, rating: 3.5, secs: 4, isNew: true },
-  collapsing_floor: { name: 'Crumbling Floor', min: worldStart(14), weight: 3, rating: 4, secs: 3, isNew: true },
-  teleport_maze: { name: 'Teleporters', min: worldStart(15), weight: 3, rating: 4, secs: 4, isNew: true },
+  // Introduced on the 7-level schedule (min is filled in from MECHANIC_ORDER).
+  color_count: { name: 'Colour Count', weight: 2, rating: 2, secs: 4 },
+  button_sequence: { name: 'Sequence', weight: 2, rating: 2, secs: 4 },
+  bounce_pad: { name: 'Bounce Pad', weight: 3, rating: 2.5, secs: 3 },
+  portal_pit: { name: 'Chasm', weight: 3, rating: 3, secs: 3, gun: true },
+  keycard_doors: { name: 'Keycards', weight: 3, rating: 3, secs: 6 },
+  dark_room: { name: 'Blackout Room', weight: 2, rating: 3, secs: 4 },
+  laser_fence: { name: 'Laser Fence', weight: 3, rating: 3.5, secs: 5 },
+  two_plates: { name: 'Twin Plates', weight: 2, rating: 3.5, secs: 8 },
+  memory_sequence: { name: 'Memory', weight: 2, rating: 3, secs: 6 },
+  window_code: { name: 'Window', weight: 2, rating: 3, secs: 3 },
+  fan_lift: { name: 'Wind Lift', weight: 3, rating: 3.5, secs: 4 },
+  cube_rescue: { name: 'Rescue', weight: 2, rating: 4, secs: 6, gun: true },
+  stack_ledge: { name: 'Stack', weight: 3, rating: 4, secs: 8 },
+  math_code: { name: 'Riddle', weight: 2, rating: 3.5, secs: 4 },
+  collapsing_floor: { name: 'Crumbling Floor', weight: 3, rating: 4, secs: 3 },
+  teleport_maze: { name: 'Teleporters', weight: 3, rating: 4, secs: 4 },
+  sprint_door: { name: 'Sprint Door', weight: 3, rating: 4.5, secs: 3 },
+  // Newer rooms (modules4.js).
+  lever_pattern: { name: 'Levers', weight: 2, rating: 2, secs: 5 },
+  color_mix: { name: 'Light Mixing', weight: 2, rating: 2, secs: 4 },
+  balance_scale: { name: 'Balance Scale', weight: 2, rating: 2.5, secs: 5 },
+  lights_out: { name: 'Lights Out', weight: 2, rating: 3, secs: 6 },
+  moving_platform: { name: 'Moving Platform', weight: 3, rating: 3, secs: 6 },
+  telescope: { name: 'Telescope', weight: 2, rating: 2.5, secs: 5 },
+  mirror_beam: { name: 'Light Beam', weight: 2, rating: 3.5, secs: 6 },
+  symbol_hunt: { name: 'Symbol Hunt', weight: 2, rating: 3, secs: 6 },
+  conveyor: { name: 'Conveyors', weight: 2, rating: 3, secs: 4 },
+  pipe_flow: { name: 'Pipes', weight: 2, rating: 3.5, secs: 8 },
+  sweeper: { name: 'Laser Gates', weight: 2, rating: 4, secs: 5 },
+  dual_switch: { name: 'Twin Switches', weight: 2, rating: 3.5, secs: 4 },
   // The finale of every level from 10 on: a furnished room you search, IRL-style.
   escape_room: { name: 'Escape Room', min: 10, weight: 0, rating: 4, secs: 25, staple: true },
-  sprint_door: { name: 'Sprint Door', min: worldStart(17), weight: 3, rating: 4.5, secs: 3, isNew: true },
 };
 
 // Puzzle families: rooms next to each other never share one.
@@ -82,24 +95,83 @@ export const FAMILY = {
   button_sequence: 'pattern', memory_sequence: 'pattern',
   loop_rooms: 'space', bigger_inside: 'space', teleport_maze: 'space',
   bounce_pad: 'motion', fan_lift: 'motion', collapsing_floor: 'motion', sprint_door: 'motion',
-  laser_fence: 'hazard', dark_room: 'hazard',
-  keycard_doors: 'search', escape_room: 'search',
+  laser_fence: 'hazard', dark_room: 'hazard', sweeper: 'hazard',
+  keycard_doors: 'search', escape_room: 'search', symbol_hunt: 'search',
+  lever_pattern: 'pattern', lights_out: 'pattern', color_mix: 'cipher', telescope: 'cipher', balance_scale: 'scale',
+  moving_platform: 'motion', conveyor: 'motion', dual_switch: 'motion', mirror_beam: 'circuit', pipe_flow: 'circuit',
 };
 for (const [id, f] of Object.entries(FAMILY)) MODULES[id].family = f;
 
 // Twists change how a whole level plays rather than adding a room.
 export const TWISTS = {
-  decoys: { name: 'Fake Panels', min: worldStart(16), chance: 0.6, rating: 1 },
-  blackout: { name: 'Blackout', min: worldStart(18), chance: 0.35, rating: 2 },
+  decoys: { name: 'Fake Panels', chance: 0.6, rating: 1 },
+  blackout: { name: 'Blackout', chance: 0.35, rating: 2 },
 };
 
-// What each world's first level introduces (shown on the level select).
-export const INTRODUCTIONS = WORLDS.map((_, w) => {
-  const n = worldStart(w);
-  const mod = Object.keys(MODULES).find((m) => MODULES[m].min === n && n > FIRST_GENERATED);
-  const twist = Object.keys(TWISTS).find((t) => TWISTS[t].min === n);
-  return mod ?? twist ?? (w === 0 ? 'color_count' : null);
+// Room rules: they change how one room plays (generate.js applies them).
+// `ok(id)` lists the rooms a rule can be safely applied to.
+const JUMPY = new Set(['collapsing_floor', 'sprint_door', 'moving_platform', 'sweeper', 'bounce_pad', 'fan_lift', 'conveyor', 'portal_pit', 'stack_ledge', 'step_ledge']);
+const CALM = new Set(['grow_plate', 'shrink_socket', 'color_count', 'button_sequence', 'dark_room', 'memory_sequence', 'window_code', 'math_code',
+  'anamorph_code', 'lever_pattern', 'color_mix', 'lights_out', 'telescope', 'mirror_beam', 'symbol_hunt', 'pipe_flow', 'balance_scale', 'keycard_doors', 'two_plates']);
+export const RULES = {
+  low_gravity: { name: 'Low Gravity', adj: 'Low-Gravity', ok: (id) => !JUMPY.has(id), line: 'Gravity is down to half in some rooms. Jumps go higher. Falls take longer. Try not to enjoy it too much.' },
+  ice: { name: 'Ice Floors', adj: 'Frozen', ok: (id) => CALM.has(id), line: 'Ice floors. You will slide. Lean into it. Not literally.' },
+  fog: { name: 'Fog', adj: 'Foggy', ok: () => true, line: "Fog in the rooms now. You can't see far. Neither can I, and I have a very big eye." },
+  strobe: { name: 'Strobe Lights', adj: 'Strobing', ok: (id) => id !== 'dark_room', line: 'Strobe lights. The room is only there half the time. Remember what you saw.' },
+  mirrored: { name: 'Mirror Rooms', adj: 'Mirrored', ok: () => true, line: 'Mirror rooms: left is right and right is left. Forward is still forward. Small mercies.' },
+};
+
+// One new mechanic every 7 levels: level 5 + 7i introduces MECHANIC_ORDER[i].
+// Entries: a module id, 'rule:x', 'twist:x' or 'fusion:rule+module'.
+const BASE_ORDER = [
+  'color_count', 'button_sequence', 'lever_pattern', 'bounce_pad', 'rule:low_gravity', 'portal_pit', 'color_mix',
+  'keycard_doors', 'balance_scale', 'dark_room', 'rule:ice', 'laser_fence', 'lights_out', 'two_plates',
+  'moving_platform', 'memory_sequence', 'rule:fog', 'window_code', 'telescope', 'fan_lift', 'mirror_beam',
+  'cube_rescue', 'rule:strobe', 'stack_ledge', 'symbol_hunt', 'math_code', 'conveyor', 'collapsing_floor',
+  'rule:mirrored', 'teleport_maze', 'pipe_flow', 'twist:decoys', 'sweeper', 'sprint_door', 'dual_switch',
+  'twist:blackout',
+];
+const SLOTS = Math.floor((LAST_GENERATED - FIRST_GENERATED) / 7) + 1;
+// After the new rooms run out, every new mechanic is a fusion: a rule applied
+// to a room it has never met, in an order that spreads rules and families.
+function fusions(count) {
+  const rng = makeRng('fusions');
+  const out = [];
+  const used = new Set();
+  const ruleIds = Object.keys(RULES);
+  const mods = Object.keys(MODULES).filter((m) => !MODULES[m].staple && BASE_ORDER.includes(m) && MODULES[m].rating >= 3);
+  for (let i = 0; out.length < count && i < 2000; i++) {
+    const r = ruleIds[out.length % ruleIds.length];
+    const m = mods[Math.floor(rng() * mods.length)];
+    const key = `fusion:${r}+${m}`;
+    if (used.has(key) || !RULES[r].ok(m)) continue;
+    used.add(key);
+    out.push(key);
+  }
+  return out;
+}
+export const MECHANIC_ORDER = [...BASE_ORDER, ...fusions(SLOTS - BASE_ORDER.length)];
+export const introLevel = (i) => FIRST_GENERATED + 7 * i;
+export const introAt = (n) => (n >= FIRST_GENERATED && (n - FIRST_GENERATED) % 7 === 0 ? MECHANIC_ORDER[(n - FIRST_GENERATED) / 7] ?? null : null);
+MECHANIC_ORDER.forEach((item, i) => {
+  if (MODULES[item]) MODULES[item].min = introLevel(i);
+  else if (item.startsWith('twist:')) TWISTS[item.slice(6)].min = introLevel(i);
+  else if (item.startsWith('rule:')) RULES[item.slice(5)].min = introLevel(i);
 });
+// A mechanic's display name and introduction line.
+export function mechanicInfo(item) {
+  if (!item) return null;
+  if (MODULES[item]) return { kind: 'room', id: item, name: MODULES[item].name };
+  const [kind, rest] = item.split(':');
+  if (kind === 'rule') return { kind, id: rest, name: RULES[rest].name, line: RULES[rest].line };
+  if (kind === 'twist') return { kind, id: rest, name: TWISTS[rest].name };
+  const [r, m] = rest.split('+');
+  return { kind: 'fusion', id: rest, rule: r, module: m, name: `${RULES[r].adj} ${MODULES[m].name}`,
+    line: `New: ${RULES[r].adj.toLowerCase()} ${MODULES[m].name.toLowerCase()}. You know both halves. You have never had them at once.` };
+}
+
+// Kept for anything that still reads per-world introductions.
+export const INTRODUCTIONS = WORLDS.map((_, w) => introAt(worldStart(w)));
 
 const ADJ = ['Hollow', 'Quiet', 'Folded', 'Broken', 'Silent', 'Hidden', 'Shifting', 'Endless', 'Narrow', 'Tilted', 'Mirrored',
   'Forgotten', 'Sunken', 'Floating', 'Inverted', 'Twisted', 'Lonely', 'Bright', 'Restless', 'Patient', 'Distant', 'Curious',
@@ -121,10 +193,20 @@ function moduleCount(n) {
   return 5;
 }
 
-export const levelLoad = (modules, twists = []) =>
-  modules.reduce((sum, m) => sum + MODULES[m].rating, 0) + twists.reduce((sum, t) => sum + TWISTS[t].rating, 0);
+// The rooms' load. (Twists and room rules are extra challenge on top of it;
+// they come and go, so they don't count towards the never-easier climb.)
+export const levelLoad = (modules) => modules.reduce((sum, m) => sum + MODULES[m].rating, 0);
 
-export const levelScore = (modules, diff, twists = []) => levelLoad(modules, twists) * (1 + 0.8 * diff);
+// The load each level aims for: a smooth climb that stays below the hardest
+// possible combination, so late levels still have many rooms to choose from.
+function loadTarget(n, count, available, staples) {
+  const t = (n - FIRST_GENERATED) / (LAST_GENERATED - FIRST_GENERATED);
+  const top = available.map((m) => MODULES[m].rating).sort((a, b) => b - a).slice(0, count).reduce((a, b) => a + b, 0)
+    + staples.reduce((a, m) => a + MODULES[m].rating, 0);
+  return Math.min(0.86 * top, 4.5 + 15.5 * t ** 0.85);
+}
+
+export const levelScore = (modules, diff) => levelLoad(modules) * (1 + 0.8 * diff);
 
 function weightedPick(rng, ids, avoid, weightOf) {
   const pool = ids.filter((id) => !avoid.has(id));
@@ -188,8 +270,13 @@ function makePlan({ id, number, seedText, count, available, world, used, force, 
   twists ??= Object.keys(TWISTS).filter((t) => number >= TWISTS[t].min &&
     (number === TWISTS[t].min || rng() < Math.min(0.9, TWISTS[t].chance * twistChance)));
   const candidates = [];
+  // Picks lean towards ratings near what the level needs per room.
+  const perRoom = minLoad / Math.max(1, count + staples.length);
+  const lean = (w) => (m) => w(m) * (MODULES[m].rating >= perRoom - 0.5 ? 1.6 : 0.6);
+  let good = 0;
   const generate = (attempts, { avoidRecent, weights, forced }) => {
-    for (let attempt = 0; attempt < attempts; attempt++) {
+    weights = lean(weights);
+    for (let attempt = 0; attempt < attempts && good < 30; attempt++) {
       const picked = forced ? [forced] : [];
       // Early attempts also avoid what the last levels used; later ones relax it.
       const avoid = new Set([...picked, ...(avoidRecent && attempt < attempts / 2 ? recent : [])]);
@@ -207,7 +294,8 @@ function makePlan({ id, number, seedText, count, available, world, used, force, 
       const fresh = modules.filter((m) => !recent.has(m)).length;
       // Distinct families in the level: more is better.
       const families = new Set(modules.map((m) => FAMILY[m])).size;
-      candidates.push({ modules, sig, load: levelLoad(modules, twists), fresh, families, forced });
+      candidates.push({ modules, sig, load: levelLoad(modules), fresh, families, forced });
+      if (levelLoad(modules) >= minLoad - 1e-9) good++;
     }
   };
   // Gameplay validity comes first: if nothing reaches the required load, search
@@ -223,9 +311,27 @@ function makePlan({ id, number, seedText, count, available, world, used, force, 
     generate(attempts, opts);
     if (candidates.some((c) => c.load >= minLoad - 1e-9)) break;
   }
+  if (!candidates.some((c) => c.load >= minLoad - 1e-9)) {
+    // Last resort: every arrangeable combination of the hardest rooms, so the
+    // selection below can still pick the gentlest one that clears the bar.
+    const top = [...available].filter((m) => m !== force).sort((a, b) => MODULES[b].rating - MODULES[a].rating).slice(0, 9);
+    const need = count - (force ? 1 : 0);
+    const combo = (start, acc) => {
+      if (acc.length === need) {
+        const picked = force ? [force, ...acc] : [...acc];
+        const modules = arrange(picked, force, staples);
+        if (!modules || used?.has(modules.join('+'))) return;
+        candidates.push({ modules, sig: modules.join('+'), load: levelLoad(modules), fresh: modules.filter((m) => !recent.has(m)).length,
+          families: new Set(modules.map((m) => FAMILY[m])).size, forced: force });
+        return;
+      }
+      for (let i = start; i < top.length; i++) combo(i + 1, [...acc, top[i]]);
+    };
+    combo(0, []);
+  }
   if (!candidates.length) {
     const modules = arrange(available.slice(0, count), null, staples) ?? [...available.slice(0, count), ...staples];
-    candidates.push({ modules, sig: '', load: levelLoad(modules, twists), fresh: 0, families: 0 });
+    candidates.push({ modules, sig: '', load: levelLoad(modules), fresh: 0, families: 0 });
   }
   // The load to aim for: a percentile of what's possible, never below minLoad.
   const loads = candidates.map((c) => c.load).sort((a, b) => a - b);
@@ -245,7 +351,7 @@ function makePlan({ id, number, seedText, count, available, world, used, force, 
   const droppedForce = force && !modules.includes(force);
   const name = `${pick(rng, ADJ)} ${pick(rng, NOUN)}`;
   return finalize({
-    id, number, name, seed: seedText, modules, twists, diff, load: levelLoad(modules, twists), score: levelScore(modules, diff, twists),
+    id, number, name, seed: seedText, modules, twists, diff, load: levelLoad(modules), score: levelScore(modules, diff),
     world: world.index, worldName: world.name, tagline: world.tagline, droppedForce,
   });
 }
@@ -260,7 +366,7 @@ export function generatedPlans() {
   const nameRng = makeRng('names');
   let chainLoad = 0; // load of the last non-boss level: the line bosses spike above
   const history = [];
-  const lastFeatured = new Map();
+  let spotlight = null; // the newest room mechanic, favoured for 14 levels
   for (let n = FIRST_GENERATED; n <= LAST_GENERATED; n++) {
     const worldIndex = Math.floor((n - FIRST_GENERATED) / LEVELS_PER_WORLD);
     const world = { ...WORLDS[worldIndex], index: worldIndex };
@@ -268,24 +374,17 @@ export function generatedPlans() {
     const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && !MODULES[m].staple);
     const staples = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && MODULES[m].staple);
     const recent = new Set(history.slice(-2).flat());
-    const intro = INTRODUCTIONS[worldIndex];
-    const isIntroLevel = n === worldStart(worldIndex);
+    // This level's new mechanic (one every 7 levels).
+    const item = introAt(n);
+    const intro = mechanicInfo(item);
+    const introModule = intro?.kind === 'room' ? item : intro?.kind === 'fusion' ? intro.module : null;
+    if (intro?.kind === 'room') spotlight = { id: item, until: n + 14 };
     const chapter = chapterFor(n);
     const pulse = storyPulse(n);
     const P = PULSE[pulse];
     const boss = isBossLevel(n) ? chapter : null;
 
-    // Featured mechanic: the world's new one on its first level; otherwise every
-    // 7 levels, the unlocked mechanic that has gone longest without the spotlight.
-    // If a choice can't reach the level's required difficulty, the next-longest
-    // waiting one gets the spotlight instead.
-    let options = [null];
-    if (!boss && isIntroLevel && MODULES[intro]) options = [intro];
-    else if (!boss && isFeatureLevel(n)) {
-      options = [...available].sort((a, b) =>
-        ((lastFeatured.get(a) ?? -1e9) - (lastFeatured.get(b) ?? -1e9)) || (MODULES[b].min - MODULES[a].min)).slice(0, 6);
-    }
-
+    const options = [introModule];
     // Boss: the chapter's signature mechanic is forced, the rest of its list boosted.
     const bossMods = boss ? boss.mechanics.filter((m) => available.includes(m)) : [];
     const signature = bossMods.sort((a, b) => MODULES[b].rating - MODULES[a].rating)[0] ?? null;
@@ -297,32 +396,55 @@ export function generatedPlans() {
       featured = option;
       const weightOf = (m) => MODULES[m].weight
       * (families.has(FAMILY[m]) ? 2 : 1)
-      * (featured && FAMILY[m] === FAMILY[featured] ? 3 : 1)
+      * (featured && FAMILY[m] === FAMILY[featured] ? 2 : 1)
       * (bossMods.includes(m) ? 4 : 1)
-      * (MODULES[intro] && m === intro ? 2 : 1);
+      * (spotlight && n <= spotlight.until && m === spotlight.id ? 3 : 1);
       plan = makePlan({
       id: `p${n}`, number: n, seedText: `level:${n}`, count: moduleCount(n) + (boss ? 1 : 0), available, world,
       used: new Set(used), // a trial: only the accepted plan's rooms are recorded
-      force: boss ? signature : featured,
+      force: featured ?? (boss ? signature : null),
       diff: difficulty(n),
       // Bosses must stand clearly above the line; everything else continues it.
-      minLoad: boss ? chainLoad + 1 : chainLoad,
-      aim: Math.min(0.95, Math.max(0.05, 0.3 + 0.55 * worldPos + P.aimShift)),
+      minLoad: boss ? chainLoad + 1 : Math.max(chainLoad, loadTarget(n, moduleCount(n), available, staples) + P.aimShift * 2),
+      aim: 0,
       recent,
       staples,
       weightOf,
       twistChance: P.twistChance,
-      twists: boss ? boss.pressure.filter((t) => t !== 'decoys' || n >= 100) : null,
+      twists: boss ? [...new Set([...boss.pressure.filter((t) => t !== 'decoys' || n >= 100), ...(intro?.kind === 'twist' ? [intro.id] : [])])] : null,
       });
+      if (plan.droppedForce && introModule) {
+        plan = makePlan({
+          id: `p${n}`, number: n, seedText: `level:${n}`, count: moduleCount(n) + (boss ? 1 : 0) + 1, available, world,
+          used: new Set(used), force: introModule, diff: difficulty(n), minLoad: boss ? chainLoad + 1 : chainLoad,
+          aim: 0, recent, staples, weightOf, twistChance: P.twistChance,
+          twists: boss ? [...new Set([...boss.pressure, ...(intro?.kind === 'twist' ? [intro.id] : [])])] : null,
+        });
+      }
       if (!plan.droppedForce) break;
     }
     used.add(plan.modules.join('+'));
-    if (featured && plan.modules.includes(featured)) lastFeatured.set(featured, n);
     if (!boss) chainLoad = plan.load;
     history.push(plan.modules);
-    plan.introduces = isIntroLevel ? intro : n === MODULES.escape_room.min ? 'escape_room' : null;
+    plan.introduces = item ?? (n === MODULES.escape_room.min ? 'escape_room' : null);
+    plan.introName = intro?.name ?? (n === MODULES.escape_room.min ? 'Escape Room' : null);
+    plan.introLine = intro?.line ?? null;
     plan.featured = featured && plan.modules.includes(featured) ? featured : null;
     plan.featuredFlavor = featured ? FEATURE_FLAVOR[featured] ?? null : null;
+    // Room rules: the new one on its introduction (and fusions), then now and
+    // again on any room they suit.
+    const ruleRng = makeRng(`rules:${n}`);
+    const known = Object.keys(RULES).filter((r) => RULES[r].min <= n);
+    plan.rules = [];
+    const applyRule = (rule, room) => { if (room >= 0 && !plan.rules.some((x) => x.room === room)) plan.rules.push({ room, rule }); };
+    const roomsFor = (rule) => plan.modules.map((m, i) => (RULES[rule].ok(m) && (rule !== 'ice' || !MODULES[m].staple) ? i : -1)).filter((i) => i >= 0);
+    if (intro?.kind === 'rule') shuffle(ruleRng, roomsFor(intro.id)).slice(0, 2).forEach((i) => applyRule(intro.id, i));
+    else if (intro?.kind === 'fusion') applyRule(intro.rule, plan.modules.indexOf(intro.module));
+    else if (known.length && ruleRng() < 0.15 + 0.4 * plan.diff) {
+      const rule = pick(ruleRng, known);
+      const rooms = roomsFor(rule);
+      if (rooms.length) applyRule(rule, pick(ruleRng, rooms));
+    }
     plan.chapter = { index: chapter.index, name: chapter.name, tone: chapter.tone, art: chapter.art };
     plan.pulse = pulse;
     plan.beat = getNarrativeBeat(n);
@@ -366,5 +488,6 @@ export function dailyPlan(date) {
   plan.featured = null;
   plan.boss = null;
   plan.threat = null;
+  plan.rules = [];
   return plan;
 }

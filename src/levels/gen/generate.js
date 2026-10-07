@@ -6,6 +6,7 @@ import { Cell, T } from './cell.js';
 import { MODULE_IMPL as BASE } from './modules.js';
 import { MODULE_IMPL_2 } from './modules2.js';
 import { ESCAPE_ROOM } from './modules3.js';
+import { MODULE_IMPL_4 } from './modules4.js';
 import { decorate, centerpiece } from './decor.js';
 import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, roomBanner, CONNECTORS, STARTS, EXITS } from './spaces.js';
 import { MODULES } from './plan.js';
@@ -16,7 +17,16 @@ import { TensionManager } from './tension.js';
 import { PayoffManager } from './payoffs.js';
 import { chapterArt, createAnomalies } from './anomalies.js';
 
-const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM };
+const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM, ...MODULE_IMPL_4 };
+
+// Room rules: how each one looks (applied once) and feels (while you're inside).
+const RULE_LOOK = {
+  low_gravity: { tint: '#9fd8ff', banner: 'LOW GRAVITY' },
+  ice: { tint: '#d8f4ff', banner: 'ICE' },
+  fog: { tint: '#c8ccd4', banner: 'FOG' },
+  strobe: { tint: '#ffffff', banner: 'STROBE' },
+  mirrored: { tint: '#ffb8f0', banner: 'MIRROR ROOM' },
+};
 
 // Weighted connector choice; never the same kind twice in a row. A world's
 // preferred passages (worlds.js rhythm) are three times as likely.
@@ -28,6 +38,18 @@ function pickConnector(rng, prev, canClimb, prefer = []) {
   let r = rng() * total;
   for (const k of kinds) if ((r -= w(k)) <= 0) return k;
   return kinds[0];
+}
+
+// The z-spans of a cell's floor, around any pits.
+function floorSpans(cell) {
+  const spans = [];
+  let top = cell.zS;
+  for (const [lo, hi] of [...(cell.floorGaps ?? [])].sort((a, c) => c[1] - a[1])) {
+    if (hi < top) spans.push([hi, top]);
+    top = lo;
+  }
+  if (top > cell.zN) spans.push([cell.zN, top]);
+  return spans;
 }
 
 export function buildGenerated(plan, b, ctx) {
@@ -102,7 +124,8 @@ export function buildGenerated(plan, b, ctx) {
     centerpiece(b, cell, rng);
     const kind = pickConnector(layout, cells.at(-1)?.connector, dims.exitY == null || dims.exitY === 0, rhythm.connectors ?? []);
     const next = buildConnector(b, cell, layout, kind);
-    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path, rig: style.rig });
+    const rule = plan.rules?.find((r) => r.room === slot)?.rule ?? null;
+    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path, rig: style.rig, rule });
     z0 = next.z;
     y0 = next.y;
   });
@@ -167,6 +190,41 @@ export function buildGenerated(plan, b, ctx) {
   // The museum, waking up (eyes, flickers, sealing doors, your ghost…).
   const anomalies = createAnomalies(b, ctx, cells, plan, makeRng(`anomaly:${plan.seed}`));
 
+  // Room rules: a sign at the door and their look; their feel is applied per frame.
+  for (const c of cells) {
+    if (!c.rule) continue;
+    const look = RULE_LOOK[c.rule];
+    const { cell } = c;
+    b.sign(signTexture([{ text: look.banner, size: 54, color: look.tint }], { w: 512, h: 120, bg: '#0b0d10', border: look.tint }),
+      1.8, 0.42, 0, Math.min(cell.y0 + cell.h - 0.5, cell.y0 + 3.6), cell.zS - 1.2, 0, { glow: 1.3 }); // hangs just inside, facing you as you enter
+    if (c.rule === 'ice') {
+      const iceMat = new THREE.MeshStandardMaterial({ color: '#cfefff', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55 });
+      for (const [lo, hi] of floorSpans(cell)) b.box(cell.x0, cell.y0, lo, cell.x1, cell.y0 + 0.01, hi, iceMat, { collide: false, solid: false, tile: 0, castShadow: false });
+    }
+    if (c.rule === 'low_gravity') b.particles('fireflies', [cell.x0, cell.y0 + 0.3, cell.zN], [cell.x1, cell.y0 + cell.h - 0.3, cell.zS], 80);
+    if (c.rule === 'strobe') c.strobe = { lamps: cell.lamps.map((l) => ({ l, base: l.intensity })), key: cell.key, keyBase: cell.key?.intensity ?? 0, t: 0 };
+  }
+  const baseFog = b.scene.fog?.density ?? 0;
+  if (cells.some((c) => c.rule === 'fog') && !b.scene.fog) b.scene.fog = new THREE.FogExp2(theme.fog, 0);
+  let fogLevel = baseFog;
+  const applyRules = (dt, player) => {
+    const here = cells.find((c) => c.cell.contains(player.pos));
+    const rule = here?.rule;
+    player.gravityScale = rule === 'low_gravity' ? 0.42 : 1;
+    player.frictionScale = rule === 'ice' && player.onGround ? 0.16 : 1;
+    player.mirrorX = rule === 'mirrored';
+    const fogWant = rule === 'fog' ? Math.max(0.16, baseFog) : baseFog;
+    fogLevel += (fogWant - fogLevel) * Math.min(1, dt * 2);
+    if (b.scene.fog) b.scene.fog.density = fogLevel;
+    for (const c of cells) {
+      if (!c.strobe) continue;
+      c.strobe.t += dt;
+      const on = (c.strobe.t % 1.6) < 0.8;
+      for (const f of c.strobe.lamps) f.l.intensity = on ? f.base : f.base * 0.03;
+      if (c.strobe.key) c.strobe.key.intensity = on ? c.strobe.keyBase : 0;
+    }
+  };
+
   // Threat timing: a lockdown that starts when you enter the marked room.
   const threat = plan.threat ? { ...plan.threat, state: 'idle' } : null;
   const startThreat = () => {
@@ -212,6 +270,7 @@ export function buildGenerated(plan, b, ctx) {
       levelState.tensionLevel = Math.min(1, (cells.filter((c) => c.done).length / Math.max(1, cells.length)) * 1.2);
       levelState.tensionManager?.update(dt, player);
       anomalies.update(dt, player);
+      applyRules(dt, player);
       if (threat) {
         const c = cells[threat.room];
         if (threat.state === 'idle' && c.cell.contains(player.pos) && player.onGround && !c.done) startThreat();
@@ -258,7 +317,7 @@ export function buildGenerated(plan, b, ctx) {
         get done() { return entry.done; },
       }, Object.getOwnPropertyDescriptors(entry.inst.debug))),
       exitZ: zEnd - 5.5,
-      layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector), rigs: cells.map((c) => c.rig) },
+      layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector), rigs: cells.map((c) => c.rig), rules: cells.map((c) => c.rule) },
       difficulty: { mode: difficultyMode, diff: plan.diff ?? 0, params: diffParams },
       threat: () => threat && { ...threat },
       sealed: () => [...anomalies.sealed],

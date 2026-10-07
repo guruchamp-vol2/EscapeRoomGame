@@ -30,7 +30,7 @@ function powerPlate(b, cell, rng, D, zPlate, label) {
 }
 
 // Shaft walls under a floor gap so pits look bottomless.
-function pitWalls(b, cell, pitS, pitN) {
+export function pitWalls(b, cell, pitS, pitN) {
   const Y = cell.y0, m = cell.mat.wall;
   b.box(cell.x0 - T, Y - 30, pitN, cell.x0, Y - 0.4, pitS, m, { castShadow: false });
   b.box(cell.x1, Y - 30, pitN, cell.x1 + T, Y - 0.4, pitS, m, { castShadow: false });

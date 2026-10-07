@@ -35,6 +35,7 @@
     <div id="flash"></div>
     <div id="urgency"></div>
     <div id="ending"></div>
+    <div id="cutscene"></div>
     <div id="photo-hud" class="hidden">
       <b>PHOTO MODE</b>
       <span><kbd>Click</kbd> Save picture</span>
@@ -103,6 +104,9 @@
           <p class="eyebrow">The Curator's Journal</p>
           <p class="sub">What happened to the curator, one chapter every 50 levels.</p>
           <div class="journal" id="journal-chapters"></div>
+          <p class="eyebrow section-gap">Story scenes</p>
+          <p class="sub" id="journal-scenes-count"></p>
+          <div class="scenes" id="journal-scenes"></div>
           <p class="eyebrow section-gap">Notes</p>
           <p class="sub" id="journal-count"></p>
           <div class="journal" id="journal"></div>
@@ -141,6 +145,7 @@
             <label>Music <output data-for="musicVolume"></output>
               <input type="range" name="musicVolume" min="0" max="1" step="0.05" /></label>
             <label class="check"><input type="checkbox" name="wren" /> WREN commentary</label>
+            <label class="check"><input type="checkbox" name="storyScenes" /> Story scenes before levels (each plays once; replay them from the Journal)</label>
             <p class="form-note">The soundtrack is generated live: each world has its own key and tempo, and more instruments join as you solve the level.</p>
           </div>
           <div class="settings hidden" data-tab="video">

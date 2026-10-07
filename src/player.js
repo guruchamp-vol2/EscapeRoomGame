@@ -24,6 +24,10 @@ export class Player {
     this.eyeHeight = 1.6;
     this.onGround = false;
     this.moveInput = null; // analog stick {x, y}, overrides WASD when set
+    // Room rules (set by the level each frame): low gravity, ice, mirror rooms.
+    this.gravityScale = 1;
+    this.frictionScale = 1;
+    this.mirrorX = false;
     this.coyote = 0;
     this.jumpBuffer = 0;
     this._min = new THREE.Vector3();
@@ -104,19 +108,20 @@ export class Player {
     let mx = 0, mz = 0;
     if (keys.has('KeyW')) { mx += fx; mz += fz; }
     if (keys.has('KeyS')) { mx -= fx; mz -= fz; }
-    if (keys.has('KeyD')) { mx += rx; mz += rz; }
-    if (keys.has('KeyA')) { mx -= rx; mz -= rz; }
+    const side = this.mirrorX ? -1 : 1; // mirror rooms swap left and right
+    if (keys.has('KeyD')) { mx += rx * side; mz += rz * side; }
+    if (keys.has('KeyA')) { mx -= rx * side; mz -= rz * side; }
     const len = Math.hypot(mx, mz);
     const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
     if (len > 0) { mx = (mx / len) * speed; mz = (mz / len) * speed; }
     const a = this.moveInput;
     if (a && (a.x || a.y)) {
       // Stick: forward is -y. Magnitude gives walk speed; sprint still applies.
-      mx = (fx * -a.y + rx * a.x) * speed;
-      mz = (fz * -a.y + rz * a.x) * speed;
+      mx = (fx * -a.y + rx * a.x * side) * speed;
+      mz = (fz * -a.y + rz * a.x * side) * speed;
     }
 
-    const accel = this.onGround ? 14 : 2.5;
+    const accel = (this.onGround ? 14 : 2.5) * this.frictionScale;
     const k = 1 - Math.exp(-accel * dt);
     this.vel.x += (mx - this.vel.x) * k;
     this.vel.z += (mz - this.vel.z) * k;
@@ -133,7 +138,7 @@ export class Player {
       this.onGround = false;
       this.coyote = this.jumpBuffer = 0;
     }
-    this.vel.y -= GRAVITY * dt;
+    this.vel.y -= GRAVITY * this.gravityScale * dt;
 
     this._depenetrate(colliders, ignore);
     this._moveAxis('x', this.vel.x * dt, colliders, ignore);

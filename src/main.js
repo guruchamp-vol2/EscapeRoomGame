@@ -20,7 +20,9 @@ import { Music, moodFor } from './music.js';
 import { GamepadInput, PAD, ACTIONS, RESERVED, actionFor, canonFor, keyLabel, defaultBindings } from './controls.js';
 import { a11y } from './a11y.js';
 import { TouchControls, isTouchDevice } from './touch.js';
-import { bossStory, CHOICE, ENDINGS } from './levels/gen/storyline.js';
+import { bossStory, CHOICE, ENDINGS, CHAPTERS } from './levels/gen/storyline.js';
+import { Cutscene } from './story/cutscene.js';
+import { sceneForLevel, SCENES } from './story/script.js';
 
 // ---------- engine ----------
 const settings = loadSettings();
@@ -51,6 +53,7 @@ const grabber = new Grabber();
 const sfx = new Sfx();
 sfx.setVolume(settings.volume);
 const music = new Music(sfx);
+const cutscene = new Cutscene({ sfx, envMap });
 music.setVolume(settings.musicVolume);
 const gamepad = new GamepadInput();
 // Phones and tablets get on-screen controls (see touch.js).
@@ -115,7 +118,8 @@ camera.add(viewmodel);
 const ui = new UI({
   onAction,
   onSetting,
-  onChamber: (id) => play(id),
+  onChamber: (id) => playStory(id),
+  onReplayScene: (index) => showScene(SCENES[index], () => ui.show('journal')),
   onAuth: (u, p, mode, email) => account.login(u, p, mode === 'register', email),
   onForgot: (login) => account.forgotPassword(login),
   onReset: (password) => account.resetPassword(resetToken, password),
@@ -252,14 +256,14 @@ function onAction(action) {
   music.muffle(!!game?.started && !game.escaped);
   sfx.play('ui');
   switch (action) {
-    case 'continue': play(continueId(progress)); break;
+    case 'continue': playStory(continueId(progress)); break;
     case 'daily': play(DAILY_ID, true); break;
     case 'resume': requestLock(); break;
     case 'restart':
     case 'replay': play(game.id, game.daily); break;
     case 'next': {
       const i = LEVELS.findIndex((l) => l.id === game.id) + 1;
-      if (levelUnlocked(progress, i)) play(LEVELS[i].id);
+      if (levelUnlocked(progress, i)) playStory(LEVELS[i].id);
       break;
     }
     case 'quit':
@@ -288,7 +292,15 @@ function requestLock() {
   try {
     const p = renderer.domElement.requestPointerLock();
     // Browsers refuse a re-lock for ~1s after Esc.
-    if (p?.catch) p.catch(() => ui.toast('Give it a second, then click again.', { type: 'warn', ms: 2000 }));
+    if (p?.catch) p.catch(() => {
+      // The browser wants a click first (e.g. after Esc): offer one.
+      if (game && !game.started) {
+        ui.setPauseInfo(game.def.name, 'Click Resume to start', 0);
+        ui.show('pause');
+      } else {
+        ui.toast('Give it a second, then click again.', { type: 'warn', ms: 2000 });
+      }
+    });
   } catch {
     // Older browsers: no promise, nothing to do.
   }
@@ -326,6 +338,14 @@ function loadLevel(id, daily = false) {
     respawn: () => respawnPlayer(),
     onStory: () => progress.readChapter(def.plan?.boss?.chapter),
     storyFor: (chapter) => bossStory(chapter, progress.data.choice),
+    // Telescope: aim at a point and zoom right in for a few seconds.
+    zoom: (target, secs) => {
+      const e = player.eye(new THREE.Vector3());
+      player.yaw = Math.atan2(-(target.x - e.x), -(target.z - e.z));
+      player.pitch = Math.atan2(target.y - e.y, Math.hypot(target.x - e.x, target.z - e.z));
+      feel.zoomUntil = performance.now() + secs * 1000;
+      ui.toast('Zoomed in. Move the mouse to look around; it zooms back out in a moment.', { type: 'info', ms: 2500 });
+    },
     wrenText: (text, mood = 'thoughtful', priority = 1) => wren.sayText(text, mood, priority),
     shake: (amount) => shake(amount),
     threatHud: (remaining, urgency) => ui.setThreat(remaining, urgency),
@@ -408,6 +428,35 @@ function loadLevel(id, daily = false) {
       ui.setGhostDelta(`Racing 👻 ${g.username} · ${formatMs(g.timeMs)}`);
     });
   }
+}
+
+// Starting a level from the menus: every third level opens with a story
+// scene the first time (Settings → Story scenes). Replays and restarts don't.
+function playStory(id, daily = false) {
+  const def = levelMeta(id, account.today);
+  const scene = !daily && !DEBUG && settings.storyScenes && def?.number ? sceneForLevel(def.number) : null;
+  if (!scene || progress.data.scenesSeen?.includes(scene.index)) return play(id, daily);
+  showScene(scene, () => {
+    progress.data.scenesSeen = [...new Set([...(progress.data.scenesSeen ?? []), scene.index])];
+    progress.save();
+    play(id, daily); // the click that ended the scene counts as the gesture for the mouse lock
+  });
+}
+
+function showScene(scene, onDone) {
+  const level = 5 + scene.index * 3;
+  const chapter = CHAPTERS[Math.min(CHAPTERS.length - 1, Math.ceil(level / 50))];
+  wren.clear();
+  ui.menu.classList.add('hidden');
+  ui.hud.classList.add('hidden');
+  music.muffle(false);
+  music.setIntensity(0);
+  cutscene.play(scene, {
+    chapterName: level > 500 ? 'EPILOGUE' : chapter.name.toUpperCase(),
+    chapterIndex: level > 500 ? 0 : Math.ceil(level / 50),
+    choice: progress.data.choice,
+    onDone,
+  });
 }
 
 function play(id, daily = false) {
@@ -775,7 +824,7 @@ function resize() {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   game?.portals.resize(size.x, size.y);
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', () => { resize(); cutscene.resize(); });
 
 // ---------- simulation ----------
 const tmp = new THREE.Vector3();
@@ -823,7 +872,8 @@ function playerFeedback(dt) {
   }
   // Sprint widens the view a little.
   const sprinting = speed > 5 && player.onGround;
-  const targetFov = settings.fov + (sprinting && !settings.reduceMotion ? 6 : 0) + feel.fovKick;
+  const zoomed = feel.zoomUntil && performance.now() < feel.zoomUntil;
+  const targetFov = zoomed ? 7 : settings.fov + (sprinting && !settings.reduceMotion ? 6 : 0) + feel.fovKick;
   if (Math.abs(camera.fov - targetFov) > 0.05) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
     camera.updateProjectionMatrix();
@@ -1004,6 +1054,7 @@ function introLine(g) {
   if (plan.beat) wren.sayText(plan.beat.line, plan.beat.mood ?? 'thoughtful', 2);
   // A new world gets its welcome, then the mechanic it introduces.
   if ((def.number - 5) % 25 === 0) wren.say('world', { index: def.world, priority: 2, cooldown: 0 });
+  if (def.plan.introLine) return wren.sayText(def.plan.introLine, 'excited', 2);
   if (def.plan.introduces) return wren.say('module_intro', { key: def.plan.introduces, priority: 1, cooldown: 0 });
   if ((def.number - 5) % 25 === 0) return;
   // Every 7 levels a mechanic takes the spotlight.
@@ -1374,6 +1425,16 @@ renderer.setAnimationLoop((time) => {
   // The first delta can be negative (rAF timestamps vs. performance.now), and a
   // negative step runs physics backwards — clamp it.
   const dt = Math.min(Math.max(timer.getDelta(), 0), 1 / 30);
+  if (cutscene.active) {
+    const p = gamepad.poll();
+    if (p?.pressed(PAD.A) || p?.pressed(PAD.X)) cutscene.advance();
+    if (p?.pressed(PAD.B) || p?.pressed(PAD.START)) cutscene.finish();
+    cutscene.update(dt);
+    if (cutscene.active) {
+      renderer.render(cutscene.scene, cutscene.camera);
+      return;
+    }
+  }
   handlePad(dt);
   if (!manualStep) update(dt);
   if (renderOff) return;
@@ -1390,7 +1451,7 @@ window.__game = {
   get game() { return game; },
   player, keys, grabber, ui, account, settings,
   interact, fire: (color) => fire(game[color]), update, play, loadLevel, music, progress,
-  enterPhoto, exitPhoto, get photo() { return photo; }, toggleFlashlight, flashlight,
+  enterPhoto, exitPhoto, get photo() { return photo; }, toggleFlashlight, flashlight, cutscene, showScene, playStory,
   rayHits: () => { raycaster.set(eye, dir); raycaster.far = 4; return raycaster.intersectObjects(game.b.solids, false).slice(0, 4).map((h) => ({ d: +h.distance.toFixed(2), geo: h.object.geometry?.type, params: h.object.geometry?.parameters, shown: isShown(h.object), interact: h.object.userData.interact ?? null, label: h.object.userData.label ?? h.object.parent?.userData?.label ?? null, pos: h.object.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(2)) })); },
   typeCode: (code) => { for (const d of code) if (aim?.kind === 'keypad') keypadInput(aim.obj.userData.keypad, d); },
   get aim() { return aim; },

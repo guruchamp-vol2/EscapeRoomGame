@@ -46,6 +46,42 @@ one gimmick to four; each gimmick is introduced in its own level first.
 Levels unlock in order. Generation is deterministic (seeded per level), so
 everyone gets the same level 137, and per-level leaderboards are fair.
 
+## The story
+
+**Elias Marrow** built a museum of impossible rooms for his daughter **Mira**.
+She designed her first room at nine ("sticky, so people stay"), grew up, and
+left. He couldn't stop building. Eleven years ago he vanished, and the
+museum kept growing without him. **WREN**, the little drone he built to sweep
+the floors, has been looking for him ever since. Then the museum sends an
+invitation. It's addressed to Mira. **You** come anyway.
+
+The story is told in **167 animated scenes**, one before every third level
+(levels 5, 8, 11 … 503), across ten chapters and an epilogue
+([script.js](src/story/script.js)). Each scene plays on its own little 3D
+stage ([stages.js](src/story/stages.js): the gate, the great hall, the
+curator's desk, WREN's workshop, Mira's nursery, the Archive, the Lab, the
+Vault, the Echoes' hall, the blueprint, the void, the Mirror Wing, the
+Engine, the rain window and the Door) with a moving camera, characters and
+typed dialogue. Scenes play once, can be skipped, can be turned off in
+Settings, and can be replayed from the Journal. Your choice at level 200
+changes later scenes and the ending.
+
+## New mechanics every 7 levels
+
+Level 5 + 7k always introduces something new (72 in all,
+`MECHANIC_ORDER` in [plan.js](src/levels/gen/plan.js)), announced by WREN
+and on the level card:
+
+- **Puzzle rooms** (37): the originals plus levers, light mixing, a balance
+  scale, lights-out tiles, moving platforms, a telescope, a light beam and
+  mirrors, a symbol hunt, conveyors, pipes, laser gates and twin switches
+  ([modules4.js](src/levels/gen/modules4.js)).
+- **Room rules** (5): low gravity, ice floors, fog, strobe lights and mirror
+  rooms (left and right swapped). Once introduced they turn up on later rooms.
+- **Twists** (2): fake portal panels and full blackouts.
+- **Fusions** (from level 257): a rule on a room it has never met, such as
+  "Frozen Laser Gates" or "Mirrored Chasm".
+
 ## Story and rhythm
 
 The levels aren't just shuffled; they follow a rhythm at three scales

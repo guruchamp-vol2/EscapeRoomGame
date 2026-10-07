@@ -89,7 +89,7 @@ function blank() {
     v: 1, stars: {}, fragments: 0, earned: 0,
     owned: ['portal:classic', 'cube:companion', 'hat:none'],
     equipped: { portal: 'classic', cube: 'companion', hat: 'none' },
-    streak: { count: 0, last: null }, quests: null, notes: [], stats: {}, chapters: [], chaptersRead: [], updatedAt: 0,
+    streak: { count: 0, last: null }, quests: null, notes: [], stats: {}, chapters: [], chaptersRead: [], scenesSeen: [], updatedAt: 0,
   };
 }
 
@@ -128,6 +128,7 @@ export class Progress {
     d.chapters = [...new Set([...(d.chapters ?? []), ...(remote.chapters ?? [])])];
     d.chaptersRead = [...new Set([...(d.chaptersRead ?? []), ...(remote.chaptersRead ?? [])])];
     d.choice ??= remote.choice ?? null; // made once, never overwritten
+    d.scenesSeen = [...new Set([...(d.scenesSeen ?? []), ...(remote.scenesSeen ?? [])])];
     for (const [k, v] of Object.entries(remote.stats ?? {})) if (typeof v === 'number') d.stats[k] = Math.max(d.stats[k] ?? 0, v);
     if ((remote.updatedAt ?? 0) > d.updatedAt) {
       d.fragments = remote.fragments;

@@ -319,6 +319,109 @@ function growStep(c, cube, minSize, maxSize) {
   throw last;
 }
 
+// Stand in front of a wall-mounted thing and press it (n times).
+function pressAt(p, stand, n = 1) {
+  standLook(stand.x, stand.y, stand.z, [p.x, p.y, p.z]);
+  for (let i = 0; i < n; i++) {
+    if (G().aim?.kind !== 'button') fail(`could not aim at ${JSON.stringify(p)} (aim: ${G().aim?.kind ?? 'nothing'})`);
+    G().interact();
+    step(0.08);
+  }
+}
+
+// Grow a cube onto a spot with a size window (tries a few grab distances).
+function growInto(c, cube, target, accept) {
+  const stands = [5, 7, 9, 11, 4, 13].map((back) => ({ x: target.x, y: c.y0, z: Math.min(c.zS - 0.8, target.z + back) }));
+  let last = null;
+  for (const dist of [1.4, 1.1, 1.8, 0.9]) {
+    try {
+      pickUp(cube, c.y0, dist);
+      return placeHeldAt(target, accept, stands);
+    } catch (err) {
+      last = err;
+      drop();
+      cube.resetHome();
+      step(0.5);
+    }
+  }
+  throw last;
+}
+
+// The rooms introduced on the 7-level schedule (modules4.js).
+Object.assign(SOLVERS, {
+  lever_pattern(c) {
+    for (const l of c.levers.filter((x) => x.need)) pressAt(l, { x: l.x + (l.west ? 1.2 : -1.2), y: c.y0, z: l.z });
+    step(0.3);
+  },
+  color_mix(c) {
+    for (const btn of c.buttons.filter((x) => x.need)) pressButton(btn, c.y0);
+    step(0.3);
+  },
+  lights_out(c) {
+    for (const p of c.presses) pressAt(p, { x: p.x + 1.5, y: c.y0, z: p.z });
+    step(0.3);
+  },
+  balance_scale(c) {
+    const { pan } = c;
+    growInto(c, c.cube, pan, (k) => {
+      const p = k.mesh.position;
+      return k.size > c.min && k.size < c.max && Math.abs(p.x - pan.x) < pan.half - 0.15 && Math.abs(p.z - pan.z) < pan.half - 0.15 && p.y - k.size / 2 < pan.y + 0.6;
+    });
+    step(1);
+  },
+  moving_platform(c) {
+    // Wait for it on our side, ride it over, step off.
+    place(0, c.y0, c.pitS + 1.0, 0, 0);
+    for (let t = 0; t < 40 && !c.atNear; t += FRAME) step(FRAME);
+    if (!c.atNear) fail('platform never came');
+    place(0, c.y0 + 0.02, c.z, 0, 0);
+    for (let t = 0; t < 30 && Math.abs(c.z - c.far) > 0.02; t += FRAME) step(FRAME);
+    hold(['KeyW'], 1.2);
+    if (!c.done) step(0.3);
+  },
+  telescope(c) { typeCode(c.keypad, c.code, c.y0 + c.exitY); },
+  mirror_beam(c) {
+    for (const m of c.mirrors.filter((x) => x.need)) pressButton(m, c.y0);
+    step(0.3);
+  },
+  symbol_hunt(c) { typeCode(c.keypad, c.code, c.y0 + c.exitY); },
+  conveyor(c) {
+    place(0, c.y0, c.start, 0, 0);
+    G().keys.add('KeyW');
+    G().keys.add('ShiftLeft');
+    for (let t = 0; t < 15 && !c.done; t += FRAME) step(FRAME);
+    G().keys.delete('KeyW');
+    G().keys.delete('ShiftLeft');
+    step(0.2);
+  },
+  pipe_flow(c) {
+    for (const p of c.presses) if (p.n) pressAt(p, { x: p.x, y: c.y0, z: p.z + 1.5 }, p.n);
+    step(0.3);
+  },
+  sweeper(c) {
+    const active = (i) => ((c.t + c.phase[i]) % c.period) < c.on;
+    c.gates.forEach((g, i) => {
+      place(0, c.y0, g.z + 0.9, 0, 0);
+      // Wait for the gate to switch off, then sprint through.
+      for (let t = 0; t < 10 && !(active(i) === false && ((c.t + c.phase[i]) % c.period) < c.on + 0.12); t += FRAME) step(FRAME);
+      G().keys.add('KeyW');
+      G().keys.add('ShiftLeft');
+      for (let t = 0; t < 1 && G().player.pos.z > g.z - 0.7; t += FRAME) step(FRAME);
+      G().keys.delete('KeyW');
+      G().keys.delete('ShiftLeft');
+      step(FRAME * 2);
+    });
+    place(0, c.y0, c.gates[c.gates.length - 1].z - 1.5, 0, 0);
+    step(0.2);
+  },
+  dual_switch(c) {
+    const [w, e] = c.switches;
+    pressAt(w, { x: w.x + 1.2, y: c.y0, z: w.z });
+    pressAt(e, { x: e.x - 1.2, y: c.y0, z: e.z });
+    step(0.3);
+  },
+});
+
 Object.assign(SOLVERS, {
   bounce_pad(c) {
     if (c.plates.length) growOntoPlate(c.cube, c.plates[0], c);
@@ -443,6 +546,12 @@ function walkTo(x, z, maxSec = 8) {
 // From just inside the exit door, through the connector (stairs, chicanes…).
 function walkToNext(c) {
   const y = c.y0 + c.exitY;
+  // Already through (e.g. sprinted on): carry on from here. Doors may have
+  // sealed behind us, so never step back.
+  if (G().player.pos.z < c.zN - 0.5) {
+    for (const [x, z] of c.path ?? []) if (G().player.pos.z > z) walkTo(x, z);
+    return;
+  }
   place(0, y, c.zN + 1.2, 0, 0);
   walkTo(0, c.zN - 0.6);
   for (const [x, z] of c.path ?? [[0, c.zN - 4]]) walkTo(x, z);

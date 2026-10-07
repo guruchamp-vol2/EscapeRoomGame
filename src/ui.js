@@ -4,6 +4,7 @@ import { LEVELS, GROUPS } from './levels/meta.js';
 import { SHOP, NOTES, levelUnlocked, continueId } from './progress.js';
 import { ACTIONS, keyLabel } from './controls.js';
 import { CHAPTERS } from './levels/gen/storyline.js';
+import { SCENES } from './story/script.js';
 
 const TIPS = [
   'Hold the restart key (Q by default) to restart a level instantly.',
@@ -350,6 +351,15 @@ export class UI {
 
   renderJournal(progress) {
     const found = progress.data.notes;
+    const seen = new Set(progress.data.scenesSeen ?? []);
+    $('#journal-scenes-count').textContent = `${seen.size} of ${SCENES.length} scenes seen. A new one plays before every third level.`;
+    $('#journal-scenes').innerHTML = SCENES.map((sc) => (seen.has(sc.index)
+      ? `<button class="scene" data-scene="${sc.index}"><span>Level ${sc.level}</span>${esc(sc.title)}</button>`
+      : `<span class="scene missing"><span>Level ${sc.level}</span>???</span>`)).join('');
+    $('#journal-scenes').onclick = (e) => {
+      const b = e.target.closest('[data-scene]');
+      if (b) this.h.onReplayScene?.(Number(b.dataset.scene));
+    };
     const beaten = progress.data.chapters ?? [];
     const read = progress.data.chaptersRead ?? [];
     const stay = progress.data.choice === 'stay';
@@ -415,8 +425,8 @@ export class UI {
           <span class="best">${best != null ? `Best ${formatMs(best)}` : ''}</span></button>`;
       }
       const gimmicks = l.plan.modules.length;
-      const boss = l.plan.boss, feat = l.plan.featured;
-      const what = boss ? `Chapter ${boss.chapter} boss` : feat ? `Featured mechanic` : '';
+      const boss = l.plan.boss, feat = l.plan.introName;
+      const what = boss ? `Chapter ${boss.chapter} boss` : feat ? `New: ${feat}` : '';
       return `<button class="tile ${best != null ? 'done' : ''} ${boss ? 'boss' : ''} ${feat ? 'featured' : ''}" data-level="${l.id}" ${locked ? 'disabled' : ''}
           title="${esc(l.name)} · ${gimmicks} rooms${what ? ` · ${what}` : ''}">
         <span class="num">${boss ? '♛ ' : feat ? '✦ ' : ''}${l.number}</span><span class="name">${esc(l.name)}</span>
@@ -551,7 +561,7 @@ export class UI {
     const boss = level.plan?.boss;
     $('#chapter-num').textContent = daily ? 'DAILY CHALLENGE' : level.story ? `CHAMBER ${pad(level.number)}` : boss ? `CHAPTER ${boss.chapter} · LEVEL ${level.number}` : `LEVEL ${level.number} · ${worldName(level)}`;
     $('#chapter-name').textContent = level.name;
-    $('#chapter-tag').textContent = boss ? boss.intro : level.plan?.featured ? `Featured: ${level.plan.featuredFlavor ?? ''}` : level.tagline;
+    $('#chapter-tag').textContent = boss ? boss.intro : level.plan?.introName ? `New mechanic: ${level.plan.introName}` : level.tagline;
     el.classList.toggle('boss', !!boss);
     el.classList.add('show');
     clearTimeout(this._chapterTimer);
