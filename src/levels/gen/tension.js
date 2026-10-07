@@ -30,10 +30,8 @@ export class TensionManager {
       }
     }
 
-    if (progress > 0.5 && player && typeof player.addShake === 'function') {
-      const shakeIntensity = (progress - 0.5) * 2;
-      player.addShake(shakeIntensity * 0.02, dt);
-    }
+    // The last stretch rumbles (through the game's screen shake).
+    if (progress > 0.75) this.ctx?.shake?.((progress - 0.75) * dt * 0.8);
 
     if (this.activeThreat.onTick) {
       this.activeThreat.onTick(progress, this.b, player);
@@ -45,7 +43,12 @@ export class TensionManager {
     }
   }
 
+  get remaining() {
+    return this.activeThreat ? Math.max(0, this.activeThreat.duration - this.threatTimer) : null;
+  }
+
   cancel() {
+    if (!this.activeThreat) return;
     this.activeThreat = null;
     this.threatTimer = 0;
     this.threatIntensity = 0;

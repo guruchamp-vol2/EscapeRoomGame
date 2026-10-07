@@ -323,7 +323,7 @@ export function generatedPlans() {
     plan.introduces = isIntroLevel ? intro : n === MODULES.escape_room.min ? 'escape_room' : null;
     plan.featured = featured && plan.modules.includes(featured) ? featured : null;
     plan.featuredFlavor = featured ? FEATURE_FLAVOR[featured] ?? null : null;
-    plan.chapter = { index: chapter.index, name: chapter.name, tone: chapter.tone };
+    plan.chapter = { index: chapter.index, name: chapter.name, tone: chapter.tone, art: chapter.art };
     plan.pulse = pulse;
     plan.beat = getNarrativeBeat(n);
     plan.boss = boss ? {
@@ -331,6 +331,18 @@ export function generatedPlans() {
       reward: boss.reward, pressureText: boss.pressureText ?? null,
     } : null;
     if (boss) plan.name = boss.name;
+    // Threat timing: a lockdown on one room. Every boss locks down its finale;
+    // in the pressure phase of a chapter about half the levels lock down one
+    // of their later rooms. Beat it for a bonus; miss it and the room goes dark.
+    const threatRng = makeRng(`threat:${n}`);
+    if (n >= 30 && (boss || (pulse === 'pressure' && threatRng() < 0.5))) {
+      const room = boss ? plan.modules.length - 1 : 1 + Math.floor(threatRng() * (plan.modules.length - 1));
+      const id = plan.modules[room];
+      const secs = Math.round((50 + MODULES[id].rating * 14 + (id === 'escape_room' ? 70 : 0)) * (1.15 - 0.35 * plan.diff));
+      plan.threat = { room, seconds: secs };
+    } else {
+      plan.threat = null;
+    }
     while (usedNames.has(plan.name)) plan.name = `${pick(nameRng, ADJ)} ${pick(nameRng, NOUN)}`;
     usedNames.add(plan.name);
     cached.push(plan);
@@ -353,5 +365,6 @@ export function dailyPlan(date) {
   plan.pulse = 'exploration';
   plan.featured = null;
   plan.boss = null;
+  plan.threat = null;
   return plan;
 }

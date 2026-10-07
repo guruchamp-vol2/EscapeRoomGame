@@ -71,6 +71,26 @@ The Door to Everywhere) tell the curator mystery: why the museum exists, why
 its rooms are becoming self-aware, and what the curator became. Chapters you
 reach are kept in the Journal next to the 20 Curator's Notes.
 
+The story is something you play, not only read:
+
+- **Self-aware rooms** ([anomalies.js](src/levels/gen/anomalies.js)) grow with
+  the chapters: eyes above the doors that follow you, lights that flicker as
+  you pass, the echoes whispering through WREN, doors that seal behind you,
+  your own ghost walking your path a few seconds behind, rooms that dim when
+  you stand still, and the only window to the outside, with real rain.
+- **Each chapter has its own look**: a colour that tints the world, and its
+  own architecture (the Archive's paper, the Lab's pipes and flasks, the
+  Vault's steel, the Echoes' old WREN shells, the Recorded End's scaffolding,
+  blueprint floors, mirrors, engine gears, the curator's family pictures and
+  the Door's golden lines).
+- **Lockdowns** (threat timing): every boss, and about half the levels in the
+  tense end of a chapter, lock one room down on a timer when you enter it.
+  Beat it for bonus Fragments; miss it and the room goes dark (never fatal).
+- **A choice** after The Echoes (level 200): finish the curator's door and
+  leave, or stay and listen to the museum. It changes chapters 5–10 and the
+  ending, and syncs with your account.
+- **The true ending** plays after level 500 (one per choice), then the credits.
+
 ## WREN
 
 The museum's caretaker: a small floating drone with one big eye that follows

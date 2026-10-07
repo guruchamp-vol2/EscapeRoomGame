@@ -68,7 +68,10 @@ Grouped by what it improves; the most important groups come first.
 - [x] Photo mode with free camera, zoom, tilt and grid
 - [x] Credits roll
 - [ ] Voice acting for WREN (text-to-speech option)
-- [~] Story beats between chapters (WREN lines, journal reveals; no cutscenes yet)
+- [x] Story beats between chapters, a choice at level 200 and two endings after level 500
+- [x] Self-aware rooms (watching eyes, flickers, whispers, sealing doors, your ghost, attention-powered lights)
+- [x] Chapter art direction (palette + architecture per chapter)
+- [x] Lockdowns: timed threats on boss and high-pressure levels
 - [ ] Particle bursts when doors open and puzzles click
 - [ ] Footstep sounds that change with the floor material
 

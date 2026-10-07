@@ -26,7 +26,10 @@ export function worldTheme(plan) {
   const floorStyle = rng() < 0.25 ? pick(rng, STYLES) : w.floor.style;
   const wallBase = jitter(w.wall.base, rng), wallLine = jitter(w.wall.line, rng);
   const floorBase = jitter(w.floor.base, rng), floorLine = jitter(w.floor.line, rng);
-  const accent = jitter(w.accent, rng, 0.02);
+  // Each story chapter tints the world towards its own colour.
+  const tint = plan.chapter?.art?.tint;
+  const toward = (hex, k) => (tint ? `#${new THREE.Color(hex).lerp(new THREE.Color(tint), k).getHexString()}` : hex);
+  const accent = toward(jitter(w.accent, rng, 0.02), 0.35);
   const fog = w.light.fog ? jitter(w.light.fog, rng, 0.02) : (w.sky ? w.sky.horizon : '#05070a');
 
   const surface = (style, base, line, metal = 0.05, s) => new THREE.MeshStandardMaterial({
@@ -63,8 +66,9 @@ export function worldTheme(plan) {
     fog,
     fogDensity: w.light.fog ? 0.012 + rng() * 0.012 : 0,
     hemi: w.light.hemi,
-    keyColor: jitter(w.light.key, rng, 0.02),
-    lampColor: jitter(w.light.lamp, rng, 0.03),
+    keyColor: toward(jitter(w.light.key, rng, 0.02), 0.2),
+    lampColor: toward(jitter(w.light.lamp, rng, 0.03), 0.25),
+    chapterArt: plan.chapter?.art ?? null,
     exposure: w.light.exposure,
     bloom: w.bloom,
     sky: w.sky ?? null,

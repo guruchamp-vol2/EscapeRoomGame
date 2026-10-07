@@ -14,6 +14,7 @@ import { makeRng, range, pick } from '../../random.js';
 import { computeDifficultyParams } from './difficulty.js';
 import { TensionManager } from './tension.js';
 import { PayoffManager } from './payoffs.js';
+import { chapterArt, createAnomalies } from './anomalies.js';
 
 const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM };
 
@@ -79,6 +80,7 @@ export function buildGenerated(plan, b, ctx) {
     const style = roomStyle(makeRng(`style:${plan.seed}:${slot}`), cell.hasCeiling, id === 'escape_room',
       { prefer: rhythm.rigs ?? [], avoid: cells.at(-1)?.rig ?? null });
     dressRoom(b, cell, style);
+    chapterArt(b, cell, theme.chapterArt?.motif, makeRng(`art:${plan.seed}:${slot}`));
     if (id === plan.featured) {
       roomBanner(b, cell, [{ text: 'FEATURED', size: 40, color: theme.accent }, { text: (MODULES[id]?.name ?? id).toUpperCase(), size: 58 }], theme.accent);
     } else if (plan.boss && slot === 0) {
@@ -93,7 +95,8 @@ export function buildGenerated(plan, b, ctx) {
       levelState,
       twists: plan.twists ?? [],
       // Boss levels hide the chapter's story in their escape room.
-      story: plan.boss && id === 'escape_room' ? { title: `Chapter ${plan.boss.chapter}: ${plan.boss.name}`, text: plan.boss.narrative } : null,
+      // (the text honours the player's choice at level 200, via ctx.storyFor)
+      story: plan.boss && id === 'escape_room' ? { title: `Chapter ${plan.boss.chapter}: ${plan.boss.name}`, text: ctx.storyFor?.(plan.boss.chapter)?.narrative ?? plan.boss.narrative } : null,
     }, dims);
     decorate(b, cell, rng, inst.reserve);
     centerpiece(b, cell, rng);
@@ -161,6 +164,29 @@ export function buildGenerated(plan, b, ctx) {
     b.mat.light.color.multiplyScalar(0.04);
   }
 
+  // The museum, waking up (eyes, flickers, sealing doors, your ghost…).
+  const anomalies = createAnomalies(b, ctx, cells, plan, makeRng(`anomaly:${plan.seed}`));
+
+  // Threat timing: a lockdown that starts when you enter the marked room.
+  const threat = plan.threat ? { ...plan.threat, state: 'idle' } : null;
+  const startThreat = () => {
+    const c = cells[threat.room];
+    threat.state = 'running';
+    ctx.wrenText?.(`Lockdown. This room seals itself in ${Math.round(threat.seconds)} seconds. Solve it before then.`, 'worried', 2);
+    levelState.tensionManager.startThreat({
+      duration: threat.seconds,
+      onComplete: () => {
+        threat.state = 'expired';
+        // Missed it: the room goes dark (harder, never fatal).
+        for (const l of c.cell.lamps) l.intensity *= 0.3;
+        if (c.cell.key) c.cell.key.intensity *= 0.3;
+        b.hemi.intensity *= 0.6;
+        b.ctx.sfx.play('danger_timeout');
+        ctx.onThreat?.('expired');
+      },
+    });
+  };
+
   let checkpoint = null;
   const spawn = { pos: new THREE.Vector3(0, 0, 4.6), yaw: 0 };
 
@@ -185,6 +211,18 @@ export function buildGenerated(plan, b, ctx) {
     update(dt, player) {
       levelState.tensionLevel = Math.min(1, (cells.filter((c) => c.done).length / Math.max(1, cells.length)) * 1.2);
       levelState.tensionManager?.update(dt, player);
+      anomalies.update(dt, player);
+      if (threat) {
+        const c = cells[threat.room];
+        if (threat.state === 'idle' && c.cell.contains(player.pos) && player.onGround && !c.done) startThreat();
+        if (threat.state === 'running' && c.done) {
+          threat.state = 'averted';
+          levelState.tensionManager.cancel();
+          ctx.onThreat?.('averted');
+        }
+        const tm = levelState.tensionManager;
+        ctx.threatHud?.(threat.state === 'running' ? tm.remaining : null, tm.getUrgencyAlpha());
+      }
 
       for (const c of cells) {
         c.inst.update?.(dt, player);
@@ -197,7 +235,8 @@ export function buildGenerated(plan, b, ctx) {
             cell: c.cell,
           });
         }
-        c.cell.door.setOpen(c.inst.doorOpen ? c.inst.doorOpen() : c.done);
+        const i = cells.indexOf(c);
+        c.cell.door.setOpen(anomalies.sealed.has(i) ? false : c.inst.doorOpen ? c.inst.doorOpen() : c.done);
         if (c.cell.contains(player.pos) && player.onGround) checkpoint = c.cell;
       }
     },
@@ -221,6 +260,8 @@ export function buildGenerated(plan, b, ctx) {
       exitZ: zEnd - 5.5,
       layout: { start: startKind, exit: exitKind, connectors: cells.map((c) => c.connector), rigs: cells.map((c) => c.rig) },
       difficulty: { mode: difficultyMode, diff: plan.diff ?? 0, params: diffParams },
+      threat: () => threat && { ...threat },
+      sealed: () => [...anomalies.sealed],
     },
   };
 }

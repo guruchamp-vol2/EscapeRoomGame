@@ -30,6 +30,7 @@ const ITEM_NAMES = { device: 'Portal device', keycard: 'Keycard' };
 
 // Screens reached from another screen; "Back" returns to where they were opened.
 const SUBSCREENS = new Set(['settings', 'controls', 'leaderboard', 'profile', 'auth', 'chambers', 'forgot', 'workshop', 'journal', 'credits']);
+// (the choice screen is shown directly by the game, not from a button)
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pad = (n) => String(n).padStart(2, '0');
@@ -351,10 +352,12 @@ export class UI {
     const found = progress.data.notes;
     const beaten = progress.data.chapters ?? [];
     const read = progress.data.chaptersRead ?? [];
+    const stay = progress.data.choice === 'stay';
     $('#journal-chapters').innerHTML = CHAPTERS.slice(1).map((c, i) => {
       const n = i + 1;
       if (beaten.includes(n) || read.includes(n)) {
-        return `<div class="entry chapter"><b>CHAPTER ${n} · ${esc(c.name.toUpperCase())}</b>${esc(c.narrative)}<i>${esc(c.reward)}</i></div>`;
+        const t = stay && c.alt ? { ...c, ...c.alt } : c;
+        return `<div class="entry chapter"><b>CHAPTER ${n} · ${esc(c.name.toUpperCase())}</b>${esc(t.narrative)}<i>${esc(t.reward)}</i></div>`;
       }
       return `<div class="entry missing">Chapter ${n}: ${esc(c.name)}. Reach level ${c.boss} to uncover it.</div>`;
     }).join('');
@@ -701,6 +704,57 @@ export class UI {
 
   clearToasts() {
     this.toasts.innerHTML = '';
+  }
+
+  // ---------- story: lockdown timer, the choice, the ending ----------
+  setThreat(remaining, urgency = 0) {
+    const el = $('#threat');
+    if (remaining == null) {
+      el.classList.remove('show');
+      document.documentElement.style.setProperty('--urgency', 0);
+      return;
+    }
+    el.classList.add('show');
+    el.classList.toggle('late', remaining < 15);
+    el.querySelector('b').textContent = formatTime(remaining);
+    document.documentElement.style.setProperty('--urgency', urgency.toFixed(3));
+  }
+
+  showChoice(choice, onPick) {
+    $('#choice-prompt').textContent = choice.prompt;
+    $('#choice-options').innerHTML = choice.options.map((o) =>
+      `<button class="choice" data-choice="${o.id}"><b>${esc(o.label)}</b><span>${esc(o.detail)}</span></button>`).join('');
+    $('#choice-options').onclick = (e) => {
+      const b = e.target.closest('[data-choice]');
+      if (b) onPick(b.dataset.choice);
+    };
+    this.show('choice');
+  }
+
+  // The true ending: lines fade in one by one over black, then `done`.
+  playEnding(lines, done) {
+    const el = $('#ending');
+    el.innerHTML = '<div class="lines"></div><button class="linkish skip">Skip</button>';
+    const box = el.querySelector('.lines');
+    el.classList.add('show');
+    let i = 0, timer = 0;
+    const finish = () => {
+      clearTimeout(timer);
+      el.classList.remove('show');
+      done();
+    };
+    el.querySelector('.skip').onclick = finish;
+    const next = () => {
+      if (i >= lines.length) { timer = setTimeout(finish, 3500); return; }
+      const p = document.createElement('p');
+      p.textContent = lines[i];
+      if (i === lines.length - 1) p.className = 'end';
+      box.appendChild(p);
+      while (box.children.length > 3) box.firstChild.remove();
+      i++;
+      timer = setTimeout(next, Math.max(3200, lines[i - 1].length * 55));
+    };
+    timer = setTimeout(next, 1200);
   }
 
   // ---------- controls ----------

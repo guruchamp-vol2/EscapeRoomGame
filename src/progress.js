@@ -127,6 +127,7 @@ export class Progress {
     d.notes = [...new Set([...d.notes, ...(remote.notes ?? [])])];
     d.chapters = [...new Set([...(d.chapters ?? []), ...(remote.chapters ?? [])])];
     d.chaptersRead = [...new Set([...(d.chaptersRead ?? []), ...(remote.chaptersRead ?? [])])];
+    d.choice ??= remote.choice ?? null; // made once, never overwritten
     for (const [k, v] of Object.entries(remote.stats ?? {})) if (typeof v === 'number') d.stats[k] = Math.max(d.stats[k] ?? 0, v);
     if ((remote.updatedAt ?? 0) > d.updatedAt) {
       d.fragments = remote.fragments;

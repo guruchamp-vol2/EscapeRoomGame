@@ -20,6 +20,7 @@ import { Music, moodFor } from './music.js';
 import { GamepadInput, PAD, ACTIONS, RESERVED, actionFor, canonFor, keyLabel, defaultBindings } from './controls.js';
 import { a11y } from './a11y.js';
 import { TouchControls, isTouchDevice } from './touch.js';
+import { bossStory, CHOICE, ENDINGS } from './levels/gen/storyline.js';
 
 // ---------- engine ----------
 const settings = loadSettings();
@@ -307,6 +308,7 @@ function loadLevel(id, daily = false) {
     game.portals.portals.forEach((p) => p.rt.dispose());
   }
   ui.clearToasts();
+  ui.setThreat(null, 0);
 
   const def = levelMeta(id, account.today);
   const scene = new THREE.Scene();
@@ -323,6 +325,23 @@ function loadLevel(id, daily = false) {
     player,
     respawn: () => respawnPlayer(),
     onStory: () => progress.readChapter(def.plan?.boss?.chapter),
+    storyFor: (chapter) => bossStory(chapter, progress.data.choice),
+    wrenText: (text, mood = 'thoughtful', priority = 1) => wren.sayText(text, mood, priority),
+    shake: (amount) => shake(amount),
+    threatHud: (remaining, urgency) => ui.setThreat(remaining, urgency),
+    onThreat: (kind) => {
+      if (kind === 'averted') {
+        progress.data.fragments += 20;
+        progress.data.earned += 20;
+        progress.stat('lockdowns');
+        progress.save();
+        ui.toast('Lockdown averted. +20 ◆', { type: 'success', ms: 3000 });
+        wren.sayText(pickLine(['Made it. The room is sulking.', 'Lockdown averted. The museum respects that.', 'In time! Barely! I was not worried!']), 'happy', 2);
+      } else {
+        ui.toast('Lockdown. The room goes dark. It is still solvable.', { type: 'warn', ms: 4000 });
+        wren.sayText(pickLine(['The lights are going down. Keep going, I can still see you.', 'It sealed itself. It did not lock us in. Small mercies.']), 'worried', 2);
+      }
+    },
     read: (title, text) => ui.showDoc(title, text),
     isTouch: touch.enabled,
     torchOn: () => flashlight.intensity > 0,
@@ -410,6 +429,8 @@ function play(id, daily = false) {
     requestLock();
   }
 }
+
+const pickLine = (lines) => lines[Math.floor(Math.random() * lines.length)];
 
 function startGame() {
   if (game.started) return;
@@ -975,8 +996,9 @@ function introLine(g) {
   const plan = def.plan;
   // Chapter bosses: the chapter's introduction, then what's different here.
   if (plan.boss) {
-    wren.sayText(plan.boss.intro, 'thoughtful', 3);
-    if (plan.boss.pressureText) wren.sayText(plan.boss.pressureText, 'worried', 2);
+    const story = bossStory(plan.boss.chapter, progress.data.choice);
+    wren.sayText(story.intro, 'thoughtful', 3);
+    if (story.pressureText) wren.sayText(story.pressureText, 'worried', 2);
     return;
   }
   if (plan.beat) wren.sayText(plan.beat.line, plan.beat.mood ?? 'thoughtful', 2);
@@ -995,7 +1017,7 @@ function outroLine(g, { levels, hints, timeMs }) {
   if (boss && !g.daily) {
     progress.reachChapter(boss.chapter);
     account.unlock(boss.chapter === 10 ? 'the_door' : boss.chapter === 1 ? 'archivist' : 'chapter_turned');
-    return wren.sayText(boss.reward, 'thoughtful', 3);
+    return wren.sayText(bossStory(boss.chapter, progress.data.choice).reward, 'thoughtful', 3);
   }
   if (!g.daily) {
     const first = !levels[g.id];
@@ -1087,6 +1109,24 @@ function complete() {
   });
   if (!DEBUG) document.exitPointerLock();
   locked = false;
+  ui.setThreat(null, 0);
+  const bossChapter = !g.daily ? g.def.plan?.boss?.chapter : null;
+  if (bossChapter === CHOICE.chapter && !progress.data.choice && !DEBUG) {
+    ui.showChoice(CHOICE, (id) => {
+      progress.data.choice = id;
+      progress.save();
+      sfx.play('achievement');
+      wren.sayText(id === 'stay' ? 'Oh. Oh! The echoes are... they are very happy. I am... I don\'t know what I am.' : 'The door, then. Okay. I\'ll help you build it. Even if it means you go.', 'thoughtful', 3);
+      ui.show('win');
+    });
+  } else if (bossChapter === 10 && !DEBUG) {
+    ui.playEnding(ENDINGS[progress.data.choice === 'stay' ? 'stay' : 'leave'], () => {
+      account.unlock('the_door');
+      ui.returnTo = 'win';
+      ui.show('credits');
+    });
+    music.stinger(true);
+  }
 
   const guest = !account.user;
   ui.setWinRank(guest
