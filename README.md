@@ -66,6 +66,28 @@ typed dialogue. Scenes play once, can be skipped, can be turned off in
 Settings, and can be replayed from the Journal. Your choice at level 200
 changes later scenes and the ending.
 
+## Boss fights
+
+Every 50th level ends in a boss arena ([modules6.js](src/levels/gen/modules6.js)).
+A giant construct hides its core behind a shield. Each phase is a station
+(marked by a pillar of light) that breaks the shield using something the
+chapter taught; meanwhile the boss attacks with a low laser sweeping the
+arena or shockwave rings. Jump them; a hit knocks you back to the entrance,
+nothing kills you. A health bar and the boss's lines sit at the top of the screen.
+
+| Level | Boss | Phases | Attacks |
+| --- | --- | --- | --- |
+| 50 | The Ledger | switches · pressure plate · grapple | sweep |
+| 100 | Specimen Zero | light beam · pressure plate · blink | waves |
+| 150 | The Lock | numbered switches · tether throw · bounce gel | sweep |
+| 200 | The Choir | hologram pads · light beam · switches | waves |
+| 250 | The Improviser | chrono · blink · pressure plate | both |
+| 300 | The Architect | lantern stairs · bounce gel · pressure plate | sweep |
+| 350 | Your Reflection | light beam · hologram pads · grapple | waves |
+| 400 | The Engine | chrono · switches · tether throw | both |
+| 450 | What Elias Left | lantern · hologram · grapple | none (it doesn't fight you) |
+| 500 | The Museum | grapple · chrono · light beam · hologram | both |
+
 ## Tools
 
 Like the portal device, these are things you carry

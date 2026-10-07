@@ -32,7 +32,7 @@
 // rhythm (featured, pulse) → thematic by chapter (boss, world rhythm).
 import { WORLDS, LEVELS_PER_WORLD } from './worlds.js';
 import { makeRng, pick, irange, shuffle } from '../../random.js';
-import { chapterFor, storyPulse, PULSE, isBossLevel, FEATURE_FLAVOR, getNarrativeBeat } from './storyline.js';
+import { chapterFor, storyPulse, PULSE, isBossLevel, FEATURE_FLAVOR, getNarrativeBeat, BOSSES } from './storyline.js';
 
 export const FIRST_GENERATED = 5; // levels 1–4 are hand-made
 export const GENERATED_COUNT = 500;
@@ -100,6 +100,8 @@ export const MODULES = {
   hidden_stairs: { name: 'Hidden Stairs', weight: 2, rating: 4, secs: 6, tool: 'lantern' },
   // The finale of every level from 10 on: a furnished room you search, IRL-style.
   escape_room: { name: 'Escape Room', min: 10, weight: 0, rating: 4, secs: 25, staple: true },
+  // The boss fight that ends every boss level (modules6.js).
+  boss_arena: { name: 'Boss', min: 50, weight: 0, rating: 5, secs: 30, bossOnly: true },
 };
 
 // Puzzle families: rooms next to each other never share one.
@@ -116,7 +118,7 @@ export const FAMILY = {
   moving_platform: 'motion', conveyor: 'motion', dual_switch: 'motion', mirror_beam: 'circuit', pipe_flow: 'circuit',
   grapple_gap: 'tool', grapple_climb: 'tool', blink_cage: 'tool', blink_islands: 'tool', throw_target: 'tool', tether_fetch: 'tool',
   gel_bounce: 'tool', gel_speed: 'tool', echo_plates: 'tool', echo_door: 'tool', chrono_blades: 'tool', chrono_crusher: 'tool',
-  hidden_bridge: 'tool', hidden_stairs: 'tool',
+  hidden_bridge: 'tool', hidden_stairs: 'tool', boss_arena: 'boss',
 };
 
 // The tools you can carry (tools/tools.js), by the room that introduces each.
@@ -409,8 +411,9 @@ export function generatedPlans() {
     const worldIndex = Math.floor((n - FIRST_GENERATED) / LEVELS_PER_WORLD);
     const world = { ...WORLDS[worldIndex], index: worldIndex };
     if (!usedByWorld.has(worldIndex)) usedByWorld.set(worldIndex, new Set());
-    const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && !MODULES[m].staple);
-    const staples = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && MODULES[m].staple);
+    const available = Object.keys(MODULES).filter((m) => MODULES[m].min <= n && !MODULES[m].staple && !MODULES[m].bossOnly);
+    // Boss levels end in the boss fight, after the escape room.
+    const staples = [...Object.keys(MODULES).filter((m) => MODULES[m].min <= n && MODULES[m].staple), ...(isBossLevel(n) ? ['boss_arena'] : [])];
     const recent = new Set(history.slice(-2).flat());
     // This level's new mechanic (one every 7 levels).
     const item = introAt(n);
@@ -465,7 +468,10 @@ export function generatedPlans() {
     if (!boss) chainLoad = plan.load;
     history.push(plan.modules);
     plan.introduces = item ?? (n === MODULES.escape_room.min ? 'escape_room' : null);
-    plan.tools = [...new Set(plan.modules.map((m) => MODULES[m].tool).filter(Boolean))];
+    // Tools: what the rooms need, plus whatever the boss's phases use.
+    const BOSS_TOOLS = { grapple: 'grapple', blink: 'blink', tether: 'tether', gel: 'gel', echo: 'echo', chrono: 'chrono', lantern: 'lantern' };
+    const bossTools = boss ? BOSSES[chapter.index].phases.map((ph) => BOSS_TOOLS[ph]).filter(Boolean) : [];
+    plan.tools = [...new Set([...plan.modules.map((m) => MODULES[m].tool).filter(Boolean), ...bossTools])];
     plan.introducesTool = intro?.tool ?? null;
     plan.introName = intro?.name ?? (n === MODULES.escape_room.min ? 'Escape Room' : null);
     plan.introLine = intro?.line ?? null;
@@ -477,8 +483,13 @@ export function generatedPlans() {
     const known = Object.keys(RULES).filter((r) => RULES[r].min <= n);
     plan.rules = [];
     const applyRule = (rule, room) => { if (room >= 0 && !plan.rules.some((x) => x.room === room)) plan.rules.push({ room, rule }); };
-    const roomsFor = (rule) => plan.modules.map((m, i) => (RULES[rule].ok(m) && (rule !== 'ice' || !MODULES[m].staple) ? i : -1)).filter((i) => i >= 0);
-    if (intro?.kind === 'rule') shuffle(ruleRng, roomsFor(intro.id)).slice(0, 2).forEach((i) => applyRule(intro.id, i));
+    const roomsFor = (rule) => plan.modules.map((m, i) => (m !== 'boss_arena' && RULES[rule].ok(m) && (rule !== 'ice' || !MODULES[m].staple) ? i : -1)).filter((i) => i >= 0);
+    if (intro?.kind === 'rule') {
+      // A new rule must appear; if no puzzle room suits it, the escape room takes it.
+      let rooms = roomsFor(intro.id);
+      if (!rooms.length) rooms = plan.modules.map((m, i) => (m === 'escape_room' ? i : -1)).filter((i) => i >= 0);
+      shuffle(ruleRng, rooms).slice(0, 2).forEach((i) => applyRule(intro.id, i));
+    }
     else if (intro?.kind === 'fusion') applyRule(intro.rule, plan.modules.indexOf(intro.module));
     else if (known.length && ruleRng() < 0.15 + 0.4 * plan.diff) {
       const rule = pick(ruleRng, known);
@@ -490,7 +501,7 @@ export function generatedPlans() {
     plan.beat = getNarrativeBeat(n);
     plan.boss = boss ? {
       chapter: chapter.index, name: boss.name, intro: boss.intro, narrative: boss.narrative,
-      reward: boss.reward, pressureText: boss.pressureText ?? null,
+      reward: boss.reward, pressureText: boss.pressureText ?? null, fight: BOSSES[chapter.index].name,
     } : null;
     if (boss) plan.name = boss.name;
     // Threat timing: a lockdown on one room. Every boss locks down its finale;
@@ -498,7 +509,7 @@ export function generatedPlans() {
     // of their later rooms. Beat it for a bonus; miss it and the room goes dark.
     const threatRng = makeRng(`threat:${n}`);
     if (n >= 30 && (boss || (pulse === 'pressure' && threatRng() < 0.5))) {
-      const room = boss ? plan.modules.length - 1 : 1 + Math.floor(threatRng() * (plan.modules.length - 1));
+      const room = boss ? plan.modules.length - 2 : 1 + Math.floor(threatRng() * (plan.modules.length - 1));
       const id = plan.modules[room];
       const secs = Math.round((50 + MODULES[id].rating * 14 + (id === 'escape_room' ? 70 : 0)) * (1.15 - 0.35 * plan.diff));
       plan.threat = { room, seconds: secs };

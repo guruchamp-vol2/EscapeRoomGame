@@ -716,6 +716,23 @@ export class UI {
     this.toasts.innerHTML = '';
   }
 
+  // ---------- boss fights ----------
+  setBoss(info) {
+    const el = $('#boss-bar');
+    if (!info) { el.classList.remove('show'); return; }
+    el.classList.add('show');
+    el.style.setProperty('--c', info.color ?? '#ff5a4a');
+    el.querySelector('b').textContent = info.name;
+    el.querySelector('.hp').innerHTML = Array.from({ length: info.max }, (_, i) => `<i class="${i < info.hp ? 'on' : ''}"></i>`).join('');
+    if (info.line) {
+      const line = el.querySelector('.line');
+      line.textContent = info.line;
+      line.classList.remove('fresh');
+      void line.offsetWidth;
+      line.classList.add('fresh');
+    }
+  }
+
   // ---------- tools ----------
   setToolbar(owned, current, info) {
     const el = $('#toolbar');

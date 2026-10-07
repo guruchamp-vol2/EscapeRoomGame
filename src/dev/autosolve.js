@@ -527,6 +527,82 @@ const TOOL_SOLVERS = {
 // The rooms introduced on the 7-level schedule (modules4.js).
 Object.assign(SOLVERS, TOOL_SOLVERS);
 
+// ---- boss fights (modules6.js): every phase, in order. The solver turns the
+// attacks off (they are jumpable, but a bot jumping them proves nothing).
+const BOSS_PHASES = {
+  switches(ph, c) { for (const b of ph.buttons) pressAt(b, { x: b.x + b.side * 1.2, y: c.y0, z: b.z }); },
+  order(ph, c) { BOSS_PHASES.switches(ph, c); },
+  plate(ph, c) {
+    const { plate } = ph;
+    growInto(c, ph.cube, plate, (k) => {
+      const p = k.mesh.position;
+      return k.size >= plate.min + 0.08 && Math.abs(p.x - plate.x) < plate.half - 0.15 && Math.abs(p.z - plate.z) < plate.half - 0.15 && p.y - k.size / 2 < plate.y + 0.6;
+    });
+    step(1);
+  },
+  beam(ph, c) { for (const m of ph.mirrors) if (m.need) pressButton(m, c.y0); },
+  grapple(ph, c) {
+    const [r1] = ph.rings;
+    place(r1.x, c.y0, r1.z + 3, 0, 0);
+    for (const r of ph.rings) grappleTo(r);
+    useTool('grapple', 1);
+    step(1.2);
+    pressButton(ph.button, ph.button.y - 1.0);
+  },
+  blink(ph, c) {
+    place(ph.target.x, c.y0, ph.target.z + 5, 0, 0);
+    blinkTo(ph.target);
+    pressButton(ph.button, c.y0);
+    blinkTo(ph.outside, { x: ph.button.x + 0.9, y: c.y0, z: ph.button.z + 0.9 });
+  },
+  tether(ph, c) { TOOL_SOLVERS.throw_target({ ...c, cube: ph.cube, target: ph.target, get done() { return ph.done; } }); },
+  gel(ph, c) {
+    place(ph.spot.x, c.y0, ph.spot.z + 4, 0, 0);
+    aimAt(ph.spot);
+    useTool('gel', 0);
+    step(0.2);
+    place(ph.spot.x, c.y0, ph.spot.z + 2.6, 0, 0);
+    hold(['KeyW'], 2.0);
+    pressButton(ph.button, ph.top);
+  },
+  echo(ph, c) {
+    const [a, b] = ph.pads;
+    place(a.x, a.y + 0.05, a.z, 0, 0);
+    useTool('echo');
+    step(0.5);
+    useTool('echo');
+    place(b.x, b.y + 0.05, b.z, 0, 0);
+    step(0.4);
+  },
+  chrono(ph, c) {
+    useTool('chrono');
+    pressAt(ph.button, { x: 0, y: c.y0, z: ph.button.z + 1.1 });
+  },
+  lantern(ph, c) {
+    tools().select('lantern');
+    if (!tools().tools.lantern.on) useTool('lantern');
+    step(0.6);
+    for (const blk of ph.blocks) { place(blk.x, blk.y + 0.02, blk.z, 0, 0); step(0.15); }
+    const last = ph.blocks[ph.blocks.length - 1];
+    place(last.x, last.y + 0.02, last.z, 0, 0);
+    hold(['KeyW', 'Space'], 1.0);
+    pressButton(ph.button, ph.top);
+  },
+};
+SOLVERS.boss_arena = (c) => {
+  c.calm = true;
+  place(0, c.y0, c.entry.z, 0, 0); // walking in starts the fight
+  step(0.3);
+  for (const ph of c.phases) {
+    for (let t = 0; t < 5 && !ph.active; t += FRAME) step(FRAME);
+    if (!ph.active) fail(`boss phase ${ph.type} never started`);
+    BOSS_PHASES[ph.type](ph, c);
+    for (let t = 0; t < 2 && !ph.done; t += FRAME) step(FRAME);
+    if (!ph.done) fail(`boss phase ${ph.type} did not break the shield`);
+  }
+  for (let t = 0; t < 4 && !c.done; t += FRAME) step(FRAME);
+};
+
 Object.assign(SOLVERS, {
   lever_pattern(c) {
     for (const l of c.levers.filter((x) => x.need)) pressAt(l, { x: l.x + (l.west ? 1.2 : -1.2), y: c.y0, z: l.z });

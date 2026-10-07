@@ -71,6 +71,7 @@ Grouped by what it improves; the most important groups come first.
 - [x] Story beats between chapters, a choice at level 200 and two endings after level 500
 - [x] A real storyline: 167 animated story scenes, one before every third level
 - [x] A new mechanic every 7 levels (12 new rooms, 5 room rules, fusions)
+- [x] Real boss fights every 50 levels (10 bosses, phases, attacks, health bar)
 - [x] Seven new tools to carry, like the portal device: Grapple Hook, Blink Beacon, Tether Glove, Gel Gun, Hologram, Chrono Watch, Revealer Lantern (14 rooms built around them)
 - [x] Self-aware rooms (watching eyes, flickers, whispers, sealing doors, your ghost, attention-powered lights)
 - [x] Chapter art direction (palette + architecture per chapter)

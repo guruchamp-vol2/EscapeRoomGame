@@ -341,6 +341,7 @@ function loadLevel(id, daily = false) {
   }
   ui.clearToasts();
   ui.setThreat(null, 0);
+  ui.setBoss(null);
 
   const def = levelMeta(id, account.today);
   const scene = new THREE.Scene();
@@ -357,6 +358,13 @@ function loadLevel(id, daily = false) {
     player,
     respawn: () => respawnPlayer(),
     standing: (x, z, half, y) => toolbelt.standing(x, z, half, y),
+    bossHud: (info) => ui.setBoss(info),
+    onKnockback: () => {
+      toolbelt.onRespawn();
+      progress.stat('knockbacks');
+      gamepad.rumble(0.7, 0.5, 250);
+      wren.sayText(pickLine(['Ow. On your behalf.', 'Jump the red line! Jump it!', 'Back to the start of the arena. It hits hard.', "You're fine. You're fine. Go again."]), 'worried', 1);
+    },
     toolModel: (id) => toolModel(id),
     giveTool: (id) => {
       toolbelt.give(id);
@@ -1207,6 +1215,7 @@ function complete() {
   if (!DEBUG) document.exitPointerLock();
   locked = false;
   ui.setThreat(null, 0);
+  ui.setBoss(null);
   const bossChapter = !g.daily ? g.def.plan?.boss?.chapter : null;
   if (bossChapter === CHOICE.chapter && !progress.data.choice && !DEBUG) {
     ui.showChoice(CHOICE, (id) => {

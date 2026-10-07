@@ -177,6 +177,36 @@ export const WHISPERS = [
   'We like the way you think.', '...he stayed too...', 'Every room you solve, we learn.',
 ];
 
+// Boss fights: the last room of every boss level is an arena. The boss hides
+// its core behind a shield; each phase breaks the shield with a mechanic the
+// chapter taught (using only tools you have by then). Attacks knock you back
+// to the arena entrance; nothing kills you.
+//   phases: switches | order | plate | beam | grapple | blink | tether | gel | echo | chrono | lantern
+//   attack: sweep (a low laser circling the arena: jump it) | wave (a shockwave
+//           ring: jump it) | both | none
+export const BOSSES = {
+  1: { name: 'THE LEDGER', color: '#e8c27a', attack: 'sweep', phases: ['switches', 'plate', 'grapple'],
+    lines: { start: 'Every room is written down. You are not written down. You will be.', hit: ['A page torn out.', 'You do not belong in the margins.', 'Unrecorded. Unacceptable.'], end: 'Fine. Write yourself in.' } },
+  2: { name: 'SPECIMEN ZERO', color: '#7affc8', attack: 'wave', phases: ['beam', 'plate', 'blink'],
+    lines: { start: 'I was the first room he grew. Let me grow around you.', hit: ['That stung. I am learning.', 'Again? I am learning faster.', 'You are a very good teacher.'], end: 'Lesson... learned.' } },
+  3: { name: 'THE LOCK', color: '#b8c4d4', attack: 'sweep', phases: ['order', 'tether', 'gel'],
+    lines: { start: 'Forty-one locks. He made them all for you. Well. For her.', hit: ['Tumbler one: open.', 'Tumbler two: open. How rude.', 'Nobody opens me.'], end: 'Click.' } },
+  4: { name: 'THE CHOIR', color: '#9a8cff', attack: 'wave', phases: ['echo', 'beam', 'switches'],
+    lines: { start: 'We are two hundred and twelve voices. Stay, stay, stay.', hit: ['Some of us are listening to you.', 'Fewer of us are singing.', 'The song is changing.'], end: '...thank you.' } },
+  5: { name: 'THE IMPROVISER', color: '#ff7a5c', attack: 'both', phases: ['chrono', 'blink', 'plate'],
+    lines: { start: 'No plans left. Just me, making it up. Watch this.', hit: ['I did not plan that.', 'I did not plan that either.', 'I am running out of ideas. That has never happened.'], end: 'Encore? No? Fair.' } },
+  6: { name: 'THE ARCHITECT', color: '#4aa8ff', attack: 'sweep', phases: ['lantern', 'gel', 'plate'],
+    lines: { start: 'Every brick of that door is yours. Every brick of me is his.', hit: ['A load-bearing wall. Gone.', 'You are better at this than he was.', 'Structural integrity: questionable.'], end: 'Build it, then. Build it well.' } },
+  7: { name: 'YOUR REFLECTION', color: '#e0f0ff', attack: 'wave', phases: ['beam', 'echo', 'grapple'],
+    lines: { start: 'I learned you. Every step. Every pause. Now do something I can\'t.', hit: ['I would have done that.', 'I would not have done that.', 'Who taught you that?'], end: 'You were never a copy.' } },
+  8: { name: 'THE ENGINE', color: '#ff9a3c', attack: 'both', phases: ['chrono', 'switches', 'tether'],
+    lines: { start: 'Pay attention. PAY ATTENTION. He did, for eleven years.', hit: ['Gear three slipping.', 'You could let me rest.', 'Let me rest.'], end: 'Quiet. Finally, quiet.' } },
+  9: { name: 'WHAT ELIAS LEFT', color: '#ffcf9a', attack: 'none', phases: ['lantern', 'echo', 'grapple'],
+    lines: { start: '(a tired, kind voice) I am not going to fight you. Light my lanterns, if you like.', hit: ['That one was hers.', 'That one was mine.', 'That one is yours.'], end: 'There. Now the room is warm.' } },
+  10: { name: 'THE MUSEUM', color: '#fff0b0', attack: 'both', phases: ['grapple', 'chrono', 'beam', 'echo'],
+    lines: { start: 'Everything I have. Every room. Every trick. One last time, together.', hit: ['That was the Archive.', 'That was the Engine.', 'That was the Mirror.', 'That was me.'], end: 'Go on, then. The door is open.' } },
+};
+
 // Anomalies: how self-aware the rooms are, by chapter (see anomalies.js).
 //   watchers  eyes that follow you         flicker   lights notice you pass
 //   whispers  echoes in WREN's subtitles   seal      doors close behind you

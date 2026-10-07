@@ -8,6 +8,7 @@ import { MODULE_IMPL_2 } from './modules2.js';
 import { ESCAPE_ROOM } from './modules3.js';
 import { MODULE_IMPL_4 } from './modules4.js';
 import { MODULE_IMPL_5 } from './modules5.js';
+import { BOSS_ARENA } from './modules6.js';
 import { decorate, centerpiece } from './decor.js';
 import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, roomBanner, CONNECTORS, STARTS, EXITS } from './spaces.js';
 import { MODULES, TOOLS } from './plan.js';
@@ -18,7 +19,7 @@ import { TensionManager } from './tension.js';
 import { PayoffManager } from './payoffs.js';
 import { chapterArt, createAnomalies } from './anomalies.js';
 
-const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM, ...MODULE_IMPL_4, ...MODULE_IMPL_5 };
+const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM, ...MODULE_IMPL_4, ...MODULE_IMPL_5, ...BOSS_ARENA };
 
 // Room rules: how each one looks (applied once) and feels (while you're inside).
 const RULE_LOOK = {
@@ -118,6 +119,7 @@ export function buildGenerated(plan, b, ctx) {
       diffParams,
       levelState,
       twists: plan.twists ?? [],
+      boss: plan.boss,
       // Boss levels hide the chapter's story in their escape room.
       // (the text honours the player's choice at level 200, via ctx.storyFor)
       story: plan.boss && id === 'escape_room' ? { title: `Chapter ${plan.boss.chapter}: ${plan.boss.name}`, text: ctx.storyFor?.(plan.boss.chapter)?.narrative ?? plan.boss.narrative } : null,
@@ -316,7 +318,7 @@ export function buildGenerated(plan, b, ctx) {
       }
 
       for (const c of cells) {
-        c.inst.update?.(c.inst.chrono ? dt * (b.timeScale ?? 1) : dt, player);
+        c.inst.update?.(c.inst.chrono ? dt * (b.timeScale ?? 1) : dt, player, dt); // (raw dt last)
         if (!c.done && c.inst.solved()) {
           c.done = true;
           levelState.solvedIndexes.add(c.cell.index);
