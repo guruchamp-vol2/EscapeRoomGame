@@ -639,3 +639,16 @@ body.cutscene #wren-box, body.cutscene #hud { display: none !important; }
 .scenes .scene { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); }
 .scenes .scene span { display: block; font: 600 10px var(--mono); color: var(--muted); }
 .scenes .scene.missing { color: var(--muted); opacity: 0.5; }
+
+/* ---------- tools ---------- */
+#toolbar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; max-width: 80vw; }
+#toolbar:empty { display: none; }
+#toolbar .tool { display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+#toolbar .tool b { font-size: 16px; color: var(--c); }
+#toolbar .tool.on { border-color: var(--c); color: var(--ink); box-shadow: 0 0 12px color-mix(in srgb, var(--c) 40%, transparent); }
+#toolbar small { flex-basis: 100%; text-align: center; color: var(--muted); font-size: 12px; }
+body.wren-talking #toolbar { opacity: 0.25; }
+body.chrono #flash { opacity: 1; animation: none; box-shadow: inset 0 0 220px rgba(120, 255, 220, 0.35); }
+.t-buttons [data-t="tool"] { grid-area: auto; }
+#touch:not(.tools) [data-t="tool"] { display: none; }
+body.touch #toolbar { bottom: auto; top: 46px; }

@@ -4,7 +4,7 @@
 // as far along the view ray as it can go without intersecting anything, scaling
 // it linearly with distance. Look at a far wall and a pebble becomes a boulder.
 import * as THREE from 'three';
-import { boxIsFree, rayBox, setCollider } from './physics.js';
+import { boxIsFree, rayBox, setCollider, boxesOverlap } from './physics.js';
 
 const MAX_SIZE = 4.5;
 const MIN_SIZE = 0.08;
@@ -17,6 +17,9 @@ export class PerspectiveCube {
     this.size = size;
     this.collider = collider;
     this.vy = 0;
+    this.vx = 0; // sideways speed (thrown by the Tether Glove)
+    this.vz = 0;
+    this.tethered = false; // held by the Tether Glove (it moves the cube itself)
     this.held = false;
     this.home = mesh.position.clone();
     this.homeSize = size;
@@ -35,7 +38,7 @@ export class PerspectiveCube {
   resetHome() {
     this.mesh.position.copy(this.home);
     this.size = this.homeSize;
-    this.vy = 0;
+    this.vy = this.vx = this.vz = 0;
     this.sync();
   }
 }
@@ -109,7 +112,8 @@ export class Grabber {
 
   // Released cubes fall straight down until they land on something.
   static simulate(cube, dt, colliders) {
-    if (cube.held) return;
+    if (cube.held || cube.tethered) return;
+    if (cube.vx || cube.vz) Grabber._slide(cube, dt, colliders);
     cube.vy -= GRAVITY * dt;
     const pos = cube.mesh.position;
     const h = cube.size / 2;
@@ -128,5 +132,30 @@ export class Grabber {
     }
     pos.y = bottom + h;
     cube.sync();
+    // Friction once it has landed.
+    if (cube.vy === 0 && (cube.vx || cube.vz)) {
+      const k = Math.exp(-dt * 7);
+      cube.vx *= k;
+      cube.vz *= k;
+      if (Math.hypot(cube.vx, cube.vz) < 0.05) cube.vx = cube.vz = 0;
+    }
+  }
+
+  // Sideways motion: move one axis at a time, bounce weakly off whatever it hits.
+  static _slide(cube, dt, colliders) {
+    const pos = cube.mesh.position;
+    const h = cube.size / 2 - 0.01;
+    const min = new THREE.Vector3(), max = new THREE.Vector3();
+    for (const axis of ['x', 'z']) {
+      const v = axis === 'x' ? cube.vx : cube.vz;
+      if (!v) continue;
+      pos[axis] += v * dt;
+      min.set(pos.x - h, pos.y - h + 0.02, pos.z - h);
+      max.set(pos.x + h, pos.y + h, pos.z + h);
+      if (colliders.some((c) => c.enabled && c !== cube.collider && boxesOverlap(min, max, c.min, c.max, 0.001))) {
+        pos[axis] -= v * dt;
+        if (axis === 'x') cube.vx = -cube.vx * 0.2; else cube.vz = -cube.vz * 0.2;
+      }
+    }
   }
 }

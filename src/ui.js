@@ -716,6 +716,14 @@ export class UI {
     this.toasts.innerHTML = '';
   }
 
+  // ---------- tools ----------
+  setToolbar(owned, current, info) {
+    const el = $('#toolbar');
+    if (owned.length === 0 || (owned.length === 1 && owned[0] === 'portal')) { el.innerHTML = ''; return; }
+    el.innerHTML = owned.map((id) => `<span class="tool ${id === current ? 'on' : ''}" style="--c:${info[id].color}"><b>${info[id].icon}</b>${id === current ? esc(info[id].name) : ''}</span>`).join('') +
+      (current ? `<small>${esc(info[current].help)}</small>` : '');
+  }
+
   // ---------- story: lockdown timer, the choice, the ending ----------
   setThreat(remaining, urgency = 0) {
     const el = $('#threat');

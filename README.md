@@ -66,12 +66,31 @@ typed dialogue. Scenes play once, can be skipped, can be turned off in
 Settings, and can be replayed from the Journal. Your choice at level 200
 changes later scenes and the ending.
 
+## Tools
+
+Like the portal device, these are things you carry
+([tools.js](src/tools/tools.js)). Switch with the mouse wheel or Tab (D-pad
+←/→ on a controller, ⇄ on a phone); left click is the main action and right
+click the second. Each one appears on a pedestal the first time, and every
+tool has two kinds of room built around it ([modules5.js](src/levels/gen/modules5.js)).
+
+| Level | Tool | What it does | Rooms |
+| --- | --- | --- | --- |
+| 26 | **Grapple Hook** | Fire at a gold ring to swing up to it; let go | Grapple across a chasm; climb a wall |
+| 61 | **Blink Beacon** | Throw a beacon (it flies through glass), then blink to it | A glass cage with no door; islands in a chasm |
+| 96 | **Tether Glove** | Grab a cube from far away; throw it | Hit a high target; fetch a cube across a chasm |
+| 131 | **Gel Gun** | Blue gel bounces you, orange gel makes you fast | Bounce up to a ledge; speed-jump a huge gap |
+| 187 | **Hologram** | Record yourself; your hologram repeats it forever | Stand on two pads at once; hold a gate open |
+| 236 | **Chrono Watch** | Freeze moving hazards for 4 s | Spinning blades; crushers |
+| 271 | **Revealer Lantern** | Hidden platforms appear (and turn solid) in its light | A hidden bridge; hidden stairs |
+
 ## New mechanics every 7 levels
 
 Level 5 + 7k always introduces something new (72 in all,
 `MECHANIC_ORDER` in [plan.js](src/levels/gen/plan.js)), announced by WREN
 and on the level card:
 
+- **Tools and their rooms** (14 rooms, 7 tools): see above.
 - **Puzzle rooms** (37): the originals plus levers, light mixing, a balance
   scale, lights-out tiles, moving platforms, a telescope, a light beam and
   mirrors, a symbol hunt, conveyors, pipes, laser gates and twin switches

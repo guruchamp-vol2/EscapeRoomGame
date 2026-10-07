@@ -23,6 +23,7 @@ import { TouchControls, isTouchDevice } from './touch.js';
 import { bossStory, CHOICE, ENDINGS, CHAPTERS } from './levels/gen/storyline.js';
 import { Cutscene } from './story/cutscene.js';
 import { sceneForLevel, SCENES } from './story/script.js';
+import { ToolBelt, TOOL_INFO, TOOL_LINES, toolModel } from './tools/tools.js';
 
 // ---------- engine ----------
 const settings = loadSettings();
@@ -76,8 +77,9 @@ const touch = new TouchControls({
     switch (id) {
       case 'jump': player.queueJump(); break;
       case 'interact': interact(); break;
-      case 'blue': fire(game.blue); break;
-      case 'orange': fire(game.orange); break;
+      case 'blue': useTool(0); break;
+      case 'orange': useTool(1); break;
+      case 'tool': toolbelt.cycle(1); break;
       case 'hint': hint(); break;
       case 'recall': recallCubes(); break;
       case 'flashlight': toggleFlashlight(); break;
@@ -113,6 +115,24 @@ viewmodel.position.set(0.3, -0.27, -0.55);
 viewmodel.scale.setScalar(0.75);
 viewmodel.visible = false;
 camera.add(viewmodel);
+
+// Tools you carry (grapple, blink, gel…); the portal device is one of them.
+const toolbelt = new ToolBelt({
+  player, camera,
+  b: () => game?.b,
+  eye: (out) => player.eye(out),
+  dir: (out) => camera.getWorldDirection(out),
+  keys: () => frameKeys(),
+  sfx,
+  toast: (msg) => ui.toast(msg, { type: 'info', ms: 2200 }),
+  shake: (a) => shake(a),
+  fovKick: (v) => { if (!settings.reduceMotion) feel.fovKick = v; },
+  chrono: (on) => document.body.classList.toggle('chrono', on),
+  onChange: (owned, current) => {
+    ui.setToolbar(owned, current, TOOL_INFO);
+    viewmodel.visible = current === 'portal' && !!game?.flags.hasGun && !photo;
+  },
+});
 
 // ---------- UI & account ----------
 const ui = new UI({
@@ -336,6 +356,15 @@ function loadLevel(id, daily = false) {
     say: (event, opts) => wren.say(event, opts),
     player,
     respawn: () => respawnPlayer(),
+    standing: (x, z, half, y) => toolbelt.standing(x, z, half, y),
+    toolModel: (id) => toolModel(id),
+    giveTool: (id) => {
+      toolbelt.give(id);
+      sfx.play('item');
+      ui.toast(`${TOOL_INFO[id].name}: ${TOOL_INFO[id].help}. Switch tools with the mouse wheel or Tab.`, { type: 'success', ms: 7000 });
+      wren.sayText(TOOL_LINES[id], 'excited', 3);
+      progress.stat('tools');
+    },
     onStory: () => progress.readChapter(def.plan?.boss?.chapter),
     storyFor: (chapter) => bossStory(chapter, progress.data.choice),
     // Telescope: aim at a point and zoom right in for a few seconds.
@@ -396,6 +425,8 @@ function loadLevel(id, daily = false) {
   player.spawn(level.spawn.pos, level.spawn.yaw);
   player.applyCamera();
   viewmodel.visible = flags.hasGun;
+  // Tools: everything this level needs, except a brand-new one (that waits on a pedestal).
+  toolbelt.reset(scene, [...(flags.hasGun ? ['portal'] : []), ...(level.tools ?? []).filter((t) => t !== level.newTool)]);
   flashlight.color.set('#fff4dd');
   flashlight.intensity = level.flashlight ? 60 : 0;
 
@@ -618,9 +649,9 @@ function updateAim() {
   let [key, text, lockedPrompt] = promptFor(aim);
   if (key === 'E') key = K('interact');
   ui.setPrompt(key, text, lockedPrompt);
-  touch.setState({ gun: game.flags.hasGun, flashlight: game.level.flashlight || game.flags.uv, keypad: aim?.kind === 'keypad' && !aim.obj.userData.keypad.solved });
+  touch.setState({ gun: game.flags.hasGun || toolbelt.owned.length > 0, tools: toolbelt.owned.length > 1, flashlight: game.level.flashlight || game.flags.uv, keypad: aim?.kind === 'keypad' && !aim.obj.userData.keypad.solved });
   ui.setCrosshair({
-    hasGun: game.flags.hasGun, blue: game.blue.placed, orange: game.orange.placed, usable: !!key && !lockedPrompt,
+    hasGun: game.flags.hasGun && toolbelt.current === 'portal', blue: game.blue.placed, orange: game.orange.placed, usable: !!key && !lockedPrompt,
   });
 }
 
@@ -634,6 +665,7 @@ function interact() {
   if (!aim?.kind) return;
   switch (aim.kind) {
     case 'cube':
+      if (aim.obj.userData.cube.tethered) return;
       grabber.grab(aim.obj.userData.cube, eye);
       progress.stat('cubes');
       gamepad.rumble(0.1, 0.3, 60);
@@ -644,7 +676,7 @@ function interact() {
       if (aim.distance > 3) return;
       game.flags.hasGun = true;
       aim.obj.visible = false;
-      viewmodel.visible = true;
+      toolbelt.give('portal');
       sfx.play('item');
       ui.toast('Portal device acquired. Left click: blue portal. Right click: orange portal.', { type: 'success', ms: 5000 });
       break;
@@ -752,6 +784,7 @@ document.addEventListener('keydown', (e) => {
     keypadInput(aim.obj.userData.keypad, e.key);
     return;
   }
+  if (e.code === 'Tab') { toolbelt.cycle(e.shiftKey ? -1 : 1); return; }
   switch (action) {
     case 'interact': interact(); break;
     case 'hint': hint(); break;
@@ -807,11 +840,22 @@ document.addEventListener('mousedown', (e) => {
     if (e.button === 0) photo.snap = true;
     return;
   }
-  if (e.button === 0) fire(game.blue);
-  else if (e.button === 2) fire(game.orange);
+  if (e.button === 0) useTool(0);
+  else if (e.button === 2) useTool(1);
 });
+
+// Primary (0) / secondary (1) action of whatever you're holding.
+function useTool(which) {
+  if (!game || grabber.held) return;
+  const t = toolbelt.current;
+  if (!t || t === 'portal') return fire(which ? game.orange : game.blue);
+  if (which) toolbelt.secondary();
+  else toolbelt.primary();
+  lastActive = performance.now();
+}
 document.addEventListener('wheel', (e) => {
   if (photo) photo.fov = Math.min(110, Math.max(15, photo.fov + Math.sign(e.deltaY) * 3));
+  else if (mouseLive()) toolbelt.cycle(Math.sign(e.deltaY) || 1);
 }, { passive: true });
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -911,6 +955,7 @@ function update(dt) {
     }
   }
 
+  toolbelt.update(dt);
   player.eye(prevEye);
   const ignore = game.portals.ignoreSet(player.center(tmp));
   const input = frameKeys();
@@ -1027,6 +1072,7 @@ function respawnPlayer() {
     grabber.drop();
     sfx.stopHeld();
   }
+  toolbelt.onRespawn();
   const sp = game.level.respawn?.() ?? game.level.spawn;
   player.spawn(sp.pos, sp.yaw);
   player.applyCamera();
@@ -1214,6 +1260,7 @@ function enterPhoto() {
   };
   keys.clear();
   viewmodel.visible = false;
+  toolbelt.hide(true);
   wren.clear();
   ui.photoMode(true);
   sfx.play('ui');
@@ -1223,7 +1270,7 @@ function exitPhoto() {
   if (!photo) return;
   photo = null;
   keys.clear();
-  viewmodel.visible = game.flags.hasGun;
+  toolbelt.hide(false);
   camera.fov = settings.fov;
   camera.updateProjectionMatrix();
   player.applyCamera();
@@ -1366,8 +1413,10 @@ function handlePad(dt) {
     if (kp) keypadInput(kp, 'Backspace');
     else recallCubes();
   }
-  if (p.pressed(PAD.RT)) fire(game.blue);
-  if (p.pressed(PAD.LT)) fire(game.orange);
+  if (p.pressed(PAD.RT)) useTool(0);
+  if (p.pressed(PAD.LT)) useTool(1);
+  if (p.pressed(PAD.LEFT)) toolbelt.cycle(-1);
+  if (p.pressed(PAD.RIGHT)) toolbelt.cycle(1);
   if (p.pressed(PAD.Y)) hint();
   if (p.pressed(PAD.RB)) toggleFlashlight();
   if (p.pressed(PAD.BACK)) enterPhoto();
@@ -1452,6 +1501,7 @@ window.__game = {
   player, keys, grabber, ui, account, settings,
   interact, fire: (color) => fire(game[color]), update, play, loadLevel, music, progress,
   enterPhoto, exitPhoto, get photo() { return photo; }, toggleFlashlight, flashlight, cutscene, showScene, playStory,
+  tools: toolbelt, useTool,
   rayHits: () => { raycaster.set(eye, dir); raycaster.far = 4; return raycaster.intersectObjects(game.b.solids, false).slice(0, 4).map((h) => ({ d: +h.distance.toFixed(2), geo: h.object.geometry?.type, params: h.object.geometry?.parameters, shown: isShown(h.object), interact: h.object.userData.interact ?? null, label: h.object.userData.label ?? h.object.parent?.userData?.label ?? null, pos: h.object.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(2)) })); },
   typeCode: (code) => { for (const d of code) if (aim?.kind === 'keypad') keypadInput(aim.obj.userData.keypad, d); },
   get aim() { return aim; },

@@ -15,6 +15,7 @@ const BUTTONS = [
   { id: 'flashlight', label: '🔦', cls: 'small' },
   { id: 'photo', label: '📷', cls: 'small' },
   { id: 'pause', label: 'II', cls: 'small' },
+  { id: 'tool', label: '⇄', cls: 'small' },
 ];
 
 export class TouchControls {
@@ -126,10 +127,11 @@ export class TouchControls {
     }
   }
 
-  setState({ gun, flashlight, keypad }) {
+  setState({ gun, flashlight, keypad, tools }) {
     if (!this.enabled) return;
     const r = this.root;
     r.classList.toggle('gun', !!gun);
+    r.classList.toggle('tools', !!tools);
     r.classList.toggle('flash', !!flashlight);
     r.querySelector('.t-keypad').classList.toggle('hidden', !keypad);
   }

@@ -7,9 +7,10 @@ import { MODULE_IMPL as BASE } from './modules.js';
 import { MODULE_IMPL_2 } from './modules2.js';
 import { ESCAPE_ROOM } from './modules3.js';
 import { MODULE_IMPL_4 } from './modules4.js';
+import { MODULE_IMPL_5 } from './modules5.js';
 import { decorate, centerpiece } from './decor.js';
 import { buildConnector, buildStart, buildExit, buildVista, dressRoom, roomStyle, roomBanner, CONNECTORS, STARTS, EXITS } from './spaces.js';
-import { MODULES } from './plan.js';
+import { MODULES, TOOLS } from './plan.js';
 import { signTexture } from '../../textures.js';
 import { makeRng, range, pick } from '../../random.js';
 import { computeDifficultyParams } from './difficulty.js';
@@ -17,7 +18,7 @@ import { TensionManager } from './tension.js';
 import { PayoffManager } from './payoffs.js';
 import { chapterArt, createAnomalies } from './anomalies.js';
 
-const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM, ...MODULE_IMPL_4 };
+const MODULE_IMPL = { ...BASE, ...MODULE_IMPL_2, ...ESCAPE_ROOM, ...MODULE_IMPL_4, ...MODULE_IMPL_5 };
 
 // Room rules: how each one looks (applied once) and feels (while you're inside).
 const RULE_LOOK = {
@@ -75,6 +76,7 @@ export function buildGenerated(plan, b, ctx) {
 
   // Layout choices come from their own stream so they don't disturb the
   // puzzle modules' random numbers.
+  b.timeScale = 1; // the Chrono Watch sets this to 0 while time is frozen
   const layout = makeRng(`layout:${plan.seed}`);
   const rhythm = theme.world?.rhythm ?? {};
   // Bosses arrive through a grand lobby and leave through a portal ring; other
@@ -122,10 +124,38 @@ export function buildGenerated(plan, b, ctx) {
     }, dims);
     decorate(b, cell, rng, inst.reserve);
     centerpiece(b, cell, rng);
+    let toolPickup = null;
+    if (plan.introducesTool && TOOLS[plan.introducesTool]?.first === id) {
+      // The new tool waits on a pedestal just inside the door.
+      const tx = -2.2, tz = cell.zS - 1.8;
+      b.pedestal(tx, tz, 0.6, cell.y0 + 1.0, cell.y0);
+      const holder = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.04, 8, 24), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffcf6b').multiplyScalar(1.8) }));
+      holder.rotation.x = Math.PI / 2;
+      holder.position.set(tx, cell.y0 + 1.05, tz);
+      const icon = ctx.toolModel?.(plan.introducesTool);
+      if (icon) { icon.position.set(tx, cell.y0 + 1.35, tz); icon.scale.setScalar(1.6); b.scene.add(icon); }
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.7), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+      hit.position.set(tx, cell.y0 + 1.35, tz);
+      hit.userData.interact = 'button';
+      hit.userData.label = `Take the ${TOOLS[plan.introducesTool].name}`;
+      hit.userData.press = () => {
+        if (!hit.visible) return;
+        hit.visible = false;
+        if (icon) icon.visible = false;
+        ctx.giveTool?.(plan.introducesTool);
+      };
+      b.scene.add(holder, hit);
+      b.solids.push(hit);
+      const light = new THREE.PointLight('#ffcf6b', 4, 4, 2);
+      light.position.set(tx, cell.y0 + 2, tz);
+      b.scene.add(light);
+      if (icon) b.updaters.push((dt) => { icon.rotation.y += dt; });
+      toolPickup = { x: tx, y: cell.y0 + 1.35, z: tz, id: plan.introducesTool };
+    }
     const kind = pickConnector(layout, cells.at(-1)?.connector, dims.exitY == null || dims.exitY === 0, rhythm.connectors ?? []);
     const next = buildConnector(b, cell, layout, kind);
     const rule = plan.rules?.find((r) => r.room === slot)?.rule ?? null;
-    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path, rig: style.rig, rule });
+    cells.push({ id, cell, inst, done: false, connector: kind, path: next.path, rig: style.rig, rule, toolPickup });
     z0 = next.z;
     y0 = next.y;
   });
@@ -251,6 +281,8 @@ export function buildGenerated(plan, b, ctx) {
   return {
     spawn,
     hasGun: plan.gun,
+    tools: plan.tools ?? [],
+    newTool: plan.introducesTool ?? null,
     flashlight: blackout,
     inventory: () => cells.flatMap((c) => c.inst.inventory?.() ?? []),
     steps: [
@@ -284,7 +316,7 @@ export function buildGenerated(plan, b, ctx) {
       }
 
       for (const c of cells) {
-        c.inst.update?.(dt, player);
+        c.inst.update?.(c.inst.chrono ? dt * (b.timeScale ?? 1) : dt, player);
         if (!c.done && c.inst.solved()) {
           c.done = true;
           levelState.solvedIndexes.add(c.cell.index);
@@ -313,7 +345,7 @@ export function buildGenerated(plan, b, ctx) {
     debug: {
       cells: cells.map((entry) => Object.defineProperties({
         id: entry.id, x0: entry.cell.x0, x1: entry.cell.x1, zS: entry.cell.zS, zN: entry.cell.zN,
-        y0: entry.cell.y0, exitY: entry.cell.exitY, path: entry.path, connector: entry.connector,
+        y0: entry.cell.y0, exitY: entry.cell.exitY, path: entry.path, connector: entry.connector, toolPickup: entry.toolPickup,
         get done() { return entry.done; },
       }, Object.getOwnPropertyDescriptors(entry.inst.debug))),
       exitZ: zEnd - 5.5,

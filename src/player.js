@@ -28,6 +28,9 @@ export class Player {
     this.gravityScale = 1;
     this.frictionScale = 1;
     this.mirrorX = false;
+    // Tools: the grapple hangs you in the air, speed gel makes you fast.
+    this.hanging = false;
+    this.speedScale = 1;
     this.coyote = 0;
     this.jumpBuffer = 0;
     this._min = new THREE.Vector3();
@@ -112,7 +115,7 @@ export class Player {
     if (keys.has('KeyD')) { mx += rx * side; mz += rz * side; }
     if (keys.has('KeyA')) { mx -= rx * side; mz -= rz * side; }
     const len = Math.hypot(mx, mz);
-    const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
+    const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED) * this.speedScale;
     if (len > 0) { mx = (mx / len) * speed; mz = (mz / len) * speed; }
     const a = this.moveInput;
     if (a && (a.x || a.y)) {
@@ -121,10 +124,13 @@ export class Player {
       mz = (fz * -a.y + rz * a.x * side) * speed;
     }
 
-    const accel = (this.onGround ? 14 : 2.5) * this.frictionScale;
-    const k = 1 - Math.exp(-accel * dt);
-    this.vel.x += (mx - this.vel.x) * k;
-    this.vel.z += (mz - this.vel.z) * k;
+    // (While the grapple is pulling or hanging you, it owns your velocity.)
+    if (!this.hanging) {
+      const accel = (this.onGround ? 14 : 2.5) * this.frictionScale;
+      const k = 1 - Math.exp(-accel * dt);
+      this.vel.x += (mx - this.vel.x) * k;
+      this.vel.z += (mz - this.vel.z) * k;
+    }
 
     // Events for sound/feedback, read by the game after update().
     this.jumped = false;
@@ -138,7 +144,7 @@ export class Player {
       this.onGround = false;
       this.coyote = this.jumpBuffer = 0;
     }
-    this.vel.y -= GRAVITY * this.gravityScale * dt;
+    if (!this.hanging) this.vel.y -= GRAVITY * this.gravityScale * dt;
 
     this._depenetrate(colliders, ignore);
     this._moveAxis('x', this.vel.x * dt, colliders, ignore);

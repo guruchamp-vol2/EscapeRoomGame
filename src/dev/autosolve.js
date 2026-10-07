@@ -347,7 +347,186 @@ function growInto(c, cube, target, accept) {
   throw last;
 }
 
+// ---- tools (modules5.js): aim from where we are, then use the tool.
+const tools = () => G().tools;
+function aimAt(target) {
+  const p = G().player;
+  const e = [p.pos.x, p.pos.y + 1.6, p.pos.z];
+  const a = aimFrom(e, [target.x, target.y, target.z]);
+  p.yaw = a.yaw;
+  p.pitch = a.pitch;
+  step(FRAME * 2);
+}
+function useTool(id, which = 0) {
+  tools().select(id);
+  if (tools().current !== id) fail(`tool ${id} not available`);
+  if (which) tools().secondary(); else tools().primary();
+}
+function grappleTo(ring) {
+  aimAt(ring);
+  useTool('grapple');
+  for (let t = 0; t < 3.5 && tools().tools.grapple.mode !== 'hang'; t += FRAME) step(FRAME);
+  if (tools().tools.grapple.mode !== 'hang') fail('grapple did not reach the ring');
+}
+function blinkTo(target, from) {
+  if (from) place(from.x, from.y, from.z, 0, 0);
+  aimAt({ x: target.x, y: target.y, z: target.z });
+  useTool('blink', 0);
+  step(0.5);
+  if (!tools().tools.blink.placed) fail('beacon did not land');
+  useTool('blink', 1);
+  step(0.3);
+}
+
+const TOOL_SOLVERS = {
+  grapple_gap(c) {
+    place(0, c.y0, c.zS - 2, 0, 0);
+    for (const r of c.rings) grappleTo(r);
+    useTool('grapple', 1);
+    step(1.5);
+  },
+  grapple_climb(c) {
+    place(0, c.y0, c.front + 5, 0, 0);
+    for (const r of c.rings) grappleTo(r);
+    useTool('grapple', 1);
+    step(1.5);
+  },
+  blink_cage(c) {
+    place(0, c.y0, c.targets[0].z + 4, 0, 0);
+    for (const t of c.targets) blinkTo(t);
+    step(0.3);
+  },
+  blink_islands(c) {
+    place(c.targets[0].x * 0.3, c.y0, c.zS - 1.5, 0, 0);
+    for (const t of c.targets) blinkTo(t);
+    step(0.5);
+  },
+  gel_bounce(c) {
+    place(0, c.y0, c.spot.z + 4, 0, 0);
+    aimAt(c.spot);
+    useTool('gel', 0);
+    step(0.2);
+    place(0, c.y0, c.spot.z + 3, 0, 0);
+    hold(['KeyW'], 2.2);
+  },
+  gel_speed(c) {
+    const spot = { x: 0, y: c.y0, z: c.pitS + 1.2 };
+    place(0, c.y0, c.pitS + 4.5, 0, 0);
+    aimAt(spot);
+    useTool('gel', 1);
+    step(0.2);
+    place(0, c.y0, c.pitS + 7.4, 0, 0);
+    const k = G().keys;
+    k.add('KeyW'); k.add('ShiftLeft');
+    let jumped = false;
+    for (let t = 0; t < 4 && !c.done; t += FRAME) {
+      if (!jumped && G().player.pos.z < c.pitS + 0.35) { jumped = true; G().player.queueJump(); }
+      step(FRAME);
+    }
+    k.delete('KeyW'); k.delete('ShiftLeft');
+    step(0.3);
+  },
+  chrono_blades(c) {
+    place(1.6, c.y0, c.zS - 1.2, 0, 0);
+    useTool('chrono');
+    const k = G().keys;
+    k.add('KeyW'); k.add('ShiftLeft');
+    for (let t = 0; t < 4 && !c.done; t += FRAME) step(FRAME);
+    k.delete('KeyW'); k.delete('ShiftLeft');
+    step(0.3);
+  },
+  chrono_crusher(c) {
+    place(0, c.y0, c.zS - 1.2, 0, 0);
+    // Wait until every piston is up, then freeze and walk under.
+    for (let t = 0; t < 8 && !c.heights.every((h) => h > c.minY + 2.0); t += FRAME) step(FRAME);
+    useTool('chrono');
+    const k = G().keys;
+    k.add('KeyW'); k.add('ShiftLeft');
+    for (let t = 0; t < 4 && !c.done; t += FRAME) step(FRAME);
+    k.delete('KeyW'); k.delete('ShiftLeft');
+    step(0.3);
+  },
+  echo_plates(c) {
+    const [a, b] = c.pads;
+    place(a.x, a.y, a.z, 0, 0);
+    useTool('echo');
+    step(0.5);
+    useTool('echo');
+    place(b.x, b.y, b.z, 0, 0);
+    step(0.4);
+  },
+  echo_door(c) {
+    place(c.pad.x, c.pad.y, c.pad.z, 0, 0);
+    useTool('echo');
+    step(0.5);
+    useTool('echo');
+    place(0, c.y0, c.gateZ + 2, 0, 0);
+    step(1.2); // the gate rises while the hologram holds the pad
+    hold(['KeyW'], 1.2);
+  },
+  hidden_bridge(c) {
+    tools().select('lantern');
+    if (!tools().tools.lantern.on) useTool('lantern');
+    place(0, c.y0, c.pitS + 1, 0, 0);
+    step(0.6);
+    for (const pt of c.bridge) walkTo(pt.x, pt.z, 4);
+    step(0.3);
+  },
+  hidden_stairs(c) {
+    tools().select('lantern');
+    if (!tools().tools.lantern.on) useTool('lantern');
+    step(0.6);
+    for (const blk of c.blocks) {
+      place(blk.x, blk.y + 0.02, blk.z, 0, 0);
+      step(0.15);
+      if (G().player.pos.y < blk.y - 0.2) fail('fell through a hidden step');
+    }
+    const last = c.blocks[c.blocks.length - 1];
+    place(last.x, last.y + 0.02, last.z, 0, 0);
+    hold(['KeyW', 'Space'], 1.2);
+  },
+  throw_target(c) {
+    const cube = c.cube;
+    const grab = () => {
+      const p = cube.mesh.position;
+      place(p.x, c.y0, p.z + 2.2, 0, 0);
+      aimAt({ x: p.x, y: p.y, z: p.z });
+      useTool('tether', 0);
+      step(0.6);
+      if (!tools().tools.tether.cube) fail('tether could not grab the cube');
+    };
+    const t = c.target;
+    for (let back = 5; back <= 9 && !c.done; back += 2) {
+      for (let lift = 0.1; lift < 1.6 && !c.done; lift += 0.15) {
+        grab();
+        place(t.x, c.y0, t.z + back, 0, 0);
+        aimAt({ x: t.x, y: t.y + lift, z: t.z });
+        step(0.3);
+        useTool('tether', 0); // throw
+        step(1.5);
+        if (!c.done) { cube.resetHome(); step(0.3); }
+      }
+    }
+  },
+  tether_fetch(c) {
+    const p = c.cube.mesh.position;
+    place(p.x, c.y0, c.zS - 1.5, 0, 0);
+    aimAt({ x: p.x, y: p.y, z: p.z });
+    useTool('tether', 0);
+    step(1.2);
+    if (!tools().tools.tether.cube) fail('tether could not grab the cube');
+    // Stand by the plate and let go above it.
+    place(c.plate.x, c.y0, c.plate.z + 2.0, 0, 0);
+    aimAt({ x: c.plate.x, y: c.y0 + 0.4, z: c.plate.z });
+    step(0.8);
+    useTool('tether', 1);
+    step(1.2);
+  },
+};
+
 // The rooms introduced on the 7-level schedule (modules4.js).
+Object.assign(SOLVERS, TOOL_SOLVERS);
+
 Object.assign(SOLVERS, {
   lever_pattern(c) {
     for (const l of c.levers.filter((x) => x.need)) pressAt(l, { x: l.x + (l.west ? 1.2 : -1.2), y: c.y0, z: l.z });
@@ -568,6 +747,7 @@ export async function solve(id, { daily = false } = {}) {
   for (let i = 0; i < cells.length; i++) {
     const c = cells[i];
     try {
+      if (c.toolPickup) pressButton(c.toolPickup, c.y0);
       SOLVERS[c.id](c);
       step(0.3);
       if (!c.done) fail('puzzle did not register as solved');

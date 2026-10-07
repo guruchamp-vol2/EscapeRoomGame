@@ -83,6 +83,21 @@ export const MODULES = {
   pipe_flow: { name: 'Pipes', weight: 2, rating: 3.5, secs: 8 },
   sweeper: { name: 'Laser Gates', weight: 2, rating: 4, secs: 5 },
   dual_switch: { name: 'Twin Switches', weight: 2, rating: 3.5, secs: 4 },
+  // Rooms built around a tool (modules5.js). `tool`: what you carry in.
+  grapple_gap: { name: 'Grapple Chasm', weight: 3, rating: 2.5, secs: 5, tool: 'grapple' },
+  grapple_climb: { name: 'Grapple Climb', weight: 2, rating: 3, secs: 5, tool: 'grapple' },
+  blink_cage: { name: 'Glass Cage', weight: 3, rating: 2.5, secs: 4, tool: 'blink' },
+  blink_islands: { name: 'Blink Islands', weight: 2, rating: 3.5, secs: 6, tool: 'blink' },
+  throw_target: { name: 'Target Practice', weight: 2, rating: 3, secs: 5, tool: 'tether' },
+  tether_fetch: { name: 'Fetch', weight: 2, rating: 3, secs: 6, tool: 'tether' },
+  gel_bounce: { name: 'Bounce Gel', weight: 3, rating: 3, secs: 4, tool: 'gel' },
+  gel_speed: { name: 'Speed Gel', weight: 2, rating: 3.5, secs: 4, tool: 'gel' },
+  echo_plates: { name: 'Two Places at Once', weight: 2, rating: 3.5, secs: 8, tool: 'echo' },
+  echo_door: { name: 'Hologram Gate', weight: 2, rating: 3.5, secs: 8, tool: 'echo' },
+  chrono_blades: { name: 'Frozen Blades', weight: 3, rating: 3.5, secs: 4, tool: 'chrono' },
+  chrono_crusher: { name: 'Crushers', weight: 2, rating: 4, secs: 4, tool: 'chrono' },
+  hidden_bridge: { name: 'Hidden Bridge', weight: 3, rating: 3.5, secs: 6, tool: 'lantern' },
+  hidden_stairs: { name: 'Hidden Stairs', weight: 2, rating: 4, secs: 6, tool: 'lantern' },
   // The finale of every level from 10 on: a furnished room you search, IRL-style.
   escape_room: { name: 'Escape Room', min: 10, weight: 0, rating: 4, secs: 25, staple: true },
 };
@@ -99,6 +114,20 @@ export const FAMILY = {
   keycard_doors: 'search', escape_room: 'search', symbol_hunt: 'search',
   lever_pattern: 'pattern', lights_out: 'pattern', color_mix: 'cipher', telescope: 'cipher', balance_scale: 'scale',
   moving_platform: 'motion', conveyor: 'motion', dual_switch: 'motion', mirror_beam: 'circuit', pipe_flow: 'circuit',
+  grapple_gap: 'tool', grapple_climb: 'tool', blink_cage: 'tool', blink_islands: 'tool', throw_target: 'tool', tether_fetch: 'tool',
+  gel_bounce: 'tool', gel_speed: 'tool', echo_plates: 'tool', echo_door: 'tool', chrono_blades: 'tool', chrono_crusher: 'tool',
+  hidden_bridge: 'tool', hidden_stairs: 'tool',
+};
+
+// The tools you can carry (tools/tools.js), by the room that introduces each.
+export const TOOLS = {
+  grapple: { name: 'Grapple Hook', first: 'grapple_gap' },
+  blink: { name: 'Blink Beacon', first: 'blink_cage' },
+  tether: { name: 'Tether Glove', first: 'throw_target' },
+  gel: { name: 'Gel Gun', first: 'gel_bounce' },
+  echo: { name: 'Hologram', first: 'echo_plates' },
+  chrono: { name: 'Chrono Watch', first: 'chrono_blades' },
+  lantern: { name: 'Revealer Lantern', first: 'hidden_bridge' },
 };
 for (const [id, f] of Object.entries(FAMILY)) MODULES[id].family = f;
 
@@ -110,9 +139,11 @@ export const TWISTS = {
 
 // Room rules: they change how one room plays (generate.js applies them).
 // `ok(id)` lists the rooms a rule can be safely applied to.
-const JUMPY = new Set(['collapsing_floor', 'sprint_door', 'moving_platform', 'sweeper', 'bounce_pad', 'fan_lift', 'conveyor', 'portal_pit', 'stack_ledge', 'step_ledge']);
+const JUMPY = new Set(['collapsing_floor', 'sprint_door', 'moving_platform', 'sweeper', 'bounce_pad', 'fan_lift', 'conveyor', 'portal_pit', 'stack_ledge', 'step_ledge',
+  'grapple_gap', 'grapple_climb', 'blink_islands', 'gel_bounce', 'gel_speed', 'chrono_blades', 'chrono_crusher', 'hidden_bridge', 'hidden_stairs', 'throw_target', 'tether_fetch']);
 const CALM = new Set(['grow_plate', 'shrink_socket', 'color_count', 'button_sequence', 'dark_room', 'memory_sequence', 'window_code', 'math_code',
-  'anamorph_code', 'lever_pattern', 'color_mix', 'lights_out', 'telescope', 'mirror_beam', 'symbol_hunt', 'pipe_flow', 'balance_scale', 'keycard_doors', 'two_plates']);
+  'anamorph_code', 'lever_pattern', 'color_mix', 'lights_out', 'telescope', 'mirror_beam', 'symbol_hunt', 'pipe_flow', 'balance_scale', 'keycard_doors', 'two_plates',
+  'echo_plates', 'echo_door', 'blink_cage']);
 export const RULES = {
   low_gravity: { name: 'Low Gravity', adj: 'Low-Gravity', ok: (id) => !JUMPY.has(id), line: 'Gravity is down to half in some rooms. Jumps go higher. Falls take longer. Try not to enjoy it too much.' },
   ice: { name: 'Ice Floors', adj: 'Frozen', ok: (id) => CALM.has(id), line: 'Ice floors. You will slide. Lean into it. Not literally.' },
@@ -124,11 +155,13 @@ export const RULES = {
 // One new mechanic every 7 levels: level 5 + 7i introduces MECHANIC_ORDER[i].
 // Entries: a module id, 'rule:x', 'twist:x' or 'fusion:rule+module'.
 const BASE_ORDER = [
-  'color_count', 'button_sequence', 'lever_pattern', 'bounce_pad', 'rule:low_gravity', 'portal_pit', 'color_mix',
-  'keycard_doors', 'balance_scale', 'dark_room', 'rule:ice', 'laser_fence', 'lights_out', 'two_plates',
-  'moving_platform', 'memory_sequence', 'rule:fog', 'window_code', 'telescope', 'fan_lift', 'mirror_beam',
-  'cube_rescue', 'rule:strobe', 'stack_ledge', 'symbol_hunt', 'math_code', 'conveyor', 'collapsing_floor',
-  'rule:mirrored', 'teleport_maze', 'pipe_flow', 'twist:decoys', 'sweeper', 'sprint_door', 'dual_switch',
+  'color_count', 'button_sequence', 'lever_pattern', 'grapple_gap', 'bounce_pad', 'rule:low_gravity', 'portal_pit',
+  'color_mix', 'blink_cage', 'keycard_doors', 'balance_scale', 'grapple_climb', 'dark_room', 'throw_target',
+  'rule:ice', 'laser_fence', 'blink_islands', 'lights_out', 'gel_bounce', 'two_plates', 'moving_platform',
+  'tether_fetch', 'memory_sequence', 'rule:fog', 'gel_speed', 'window_code', 'echo_plates', 'telescope',
+  'fan_lift', 'mirror_beam', 'cube_rescue', 'echo_door', 'rule:strobe', 'chrono_blades', 'stack_ledge',
+  'symbol_hunt', 'math_code', 'conveyor', 'hidden_bridge', 'collapsing_floor', 'rule:mirrored', 'chrono_crusher',
+  'teleport_maze', 'pipe_flow', 'hidden_stairs', 'twist:decoys', 'sweeper', 'sprint_door', 'dual_switch',
   'twist:blackout',
 ];
 const SLOTS = Math.floor((LAST_GENERATED - FIRST_GENERATED) / 7) + 1;
@@ -161,7 +194,12 @@ MECHANIC_ORDER.forEach((item, i) => {
 // A mechanic's display name and introduction line.
 export function mechanicInfo(item) {
   if (!item) return null;
-  if (MODULES[item]) return { kind: 'room', id: item, name: MODULES[item].name };
+  if (MODULES[item]) {
+    const tool = Object.entries(TOOLS).find(([, t]) => t.first === item)?.[0] ?? null;
+    return tool
+      ? { kind: 'room', id: item, tool, name: `${TOOLS[tool].name}` }
+      : { kind: 'room', id: item, name: MODULES[item].name };
+  }
   const [kind, rest] = item.split(':');
   if (kind === 'rule') return { kind, id: rest, name: RULES[rest].name, line: RULES[rest].line };
   if (kind === 'twist') return { kind, id: rest, name: TWISTS[rest].name };
@@ -427,6 +465,8 @@ export function generatedPlans() {
     if (!boss) chainLoad = plan.load;
     history.push(plan.modules);
     plan.introduces = item ?? (n === MODULES.escape_room.min ? 'escape_room' : null);
+    plan.tools = [...new Set(plan.modules.map((m) => MODULES[m].tool).filter(Boolean))];
+    plan.introducesTool = intro?.tool ?? null;
     plan.introName = intro?.name ?? (n === MODULES.escape_room.min ? 'Escape Room' : null);
     plan.introLine = intro?.line ?? null;
     plan.featured = featured && plan.modules.includes(featured) ? featured : null;
@@ -489,5 +529,7 @@ export function dailyPlan(date) {
   plan.boss = null;
   plan.threat = null;
   plan.rules = [];
+  plan.tools = [...new Set(plan.modules.map((m) => MODULES[m].tool).filter(Boolean))];
+  plan.introducesTool = null;
   return plan;
 }
